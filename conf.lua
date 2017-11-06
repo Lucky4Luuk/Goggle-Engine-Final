@@ -5,6 +5,8 @@ function love.conf(t)
 	t.window.width = 800           -- we want our game to be long and thin.
 	t.window.height = 480
 
+	t.vsync = false
+
 	-- For Windows debugging
 	t.console = true
 end

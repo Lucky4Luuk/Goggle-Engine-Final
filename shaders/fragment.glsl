@@ -1,4 +1,8 @@
 #define AA 1
+#define GI 1
+
+int GI_maxDistance = 20;
+int GI_maxBounces = 4;
 
 uniform vec2 iTime;
 uniform vec3 cam_pos;
@@ -34,6 +38,20 @@ struct COLRESULT {
 	int b;
 	int id;
 	vec3 pos;
+};
+
+struct L_RESULT {
+	float t;
+	vec3 m;
+	int id;
+};
+
+struct GI_TRACE {
+	vec3 p;
+	vec3 rd;
+	vec3 em;
+	float BRDF;
+	int id;
 };
 
 vec4 opU( vec4 d1, vec4 d2 )
@@ -92,26 +110,26 @@ float fmod(float a, float b)
 RESULT map(vec3 pos)
 {
 	//vec3 cp = vec3(0.0,0.0,0.0);
-	
+
     //vec2 res = opU(vec2(sdPlane(pos - vec3(0.0,0.0,0.0) + cp),1.0),
     //               vec2(sdSphere(pos - vec3(0.0,0.5,0.0) + cp,0.5),46.9));
-    
+
     //float b = opBlend(udBox(pos - vec3(1.0,0.5,0.0) + cp,vec3(0.5,0.5,0.5)),
     //                  sdSphere(pos - vec3(1.0,0.5,0.0) + cp,0.5),(sin(iTime.x)+1.0)/2.0);
     //res = opU(res, vec2(b,78.5));
-    
+
     //b = opI(udBox(pos - vec3(-1.0,0.5 * (sin(iTime.x)+1.0)/2.0,0.0) + cp,vec3(0.5,0.5,0.5)),
     //        sdSphere(pos - vec3(-1.0,0.5,0.0) + cp,0.5));
     //res = opU(res, vec2(b,129.8));
-    
+
     //b = opS(sdSphere(pos - vec3(-1.0,0.5,-1.0) + cp,0.5),
     //        udBox(pos - vec3(-1.0,0.5 * (sin(iTime.x))/1.0,-1.0) + cp,vec3(0.5,0.5,0.5)));
     //res = opU(res, vec2(b,22.4));
-	
+
 	vec4 res = vec4(-1.0);
 	int id = 0;
 	float closest;
-	
+
 	if (object_amount > 0)
 	{
 		if (objects[0].Type == 1)
@@ -136,7 +154,7 @@ RESULT map(vec3 pos)
 			closest = q;
 		}
 		id = objects[0].i;
-		
+
 		for (int o = 1; o < object_amount; o++)
 		{
 			if (objects[o].Type == 1)
@@ -185,14 +203,14 @@ RESULT map(vec3 pos)
 }
 
 RESULT castRay(vec3 pos, vec3 dir)
-{    
-    float tmin = 0.05;
+{
+    float tmin = 0.005;
     float tmax = view_distance;
 
     float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
     float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
                                                      else tmax = min(tmax, tp2); }
-    
+
     float t = tmin;
     vec3 m = vec3(-1.0);
 		int id = 0;
@@ -206,13 +224,55 @@ RESULT castRay(vec3 pos, vec3 dir)
         t += res.x;
         m = res.yzw;
     }
-    
+
     if (t>tmax) m=vec3(-15.0);
     //return vec4(t, m);
 		RESULT re;
 		re.re = vec4(t, m);
 		re.i = id;
 		return re;
+}
+
+L_RESULT castLightRay(vec3 pos, vec3 dir, vec3 light_color, int cur_id)
+{
+    float tmin = 0.05;
+    float tmax = view_distance;
+
+    float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
+    float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
+                                                     else tmax = min(tmax, tp2); }
+
+    float t = tmin;
+    vec3 m = vec3(0.0);
+		int id = 0;
+    for (int i=0; i<64; i++)
+    {
+        float precis = 0.0005*t;
+        RESULT r = map(pos + dir*t);
+				vec4 res = r.re;
+				id = r.i;
+        if (res.x<precis)
+				{
+					if (id != cur_id) break;
+				}
+
+				if (res.x>tmax) break;
+        t += res.x;
+        m = res.yzw;
+    }
+
+    if (t>tmax)
+		{
+			m=vec3(0.0);
+			id = -1;
+		}
+
+		L_RESULT lre;
+		lre.t = t;
+		lre.m = m;
+		lre.id = id;
+
+    return lre;
 }
 
 float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
@@ -232,9 +292,9 @@ float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
 vec3 calcNormal( in vec3 pos )
 {
     vec2 e = vec2(1.0,-1.0)*0.5773*0.0005;
-    return normalize( e.xyy*map( pos + e.xyy ).re.x + 
-					  e.yyx*map( pos + e.yyx ).re.x + 
-					  e.yxy*map( pos + e.yxy ).re.x + 
+    return normalize( e.xyy*map( pos + e.xyy ).re.x +
+					  e.yyx*map( pos + e.yyx ).re.x +
+					  e.yxy*map( pos + e.yxy ).re.x +
 					  e.xxx*map( pos + e.xxx ).re.x );
     /*
 	vec3 eps = vec3( 0.0005, 0.0, 0.0 );
@@ -250,9 +310,9 @@ float calcAO( in vec3 pos, in vec3 nor )
 {
 	float occ = 0.0;
   float sca = 1.0;
-  for( int i=0; i<5; i++ )
+  for( int i=0; i<50; i++ )
   {
-      float hr = 0.01 + 0.12*float(i)/4.0;
+      float hr = 0.01 + 0.12*float(i)/50.0;
       vec3 aopos =  nor * hr + pos;
       float dd = map( aopos ).re.x;
       occ += -(dd-hr)*sca;
@@ -291,6 +351,35 @@ vec3 calcFog(vec3 pos, vec3 rd)
 	return col;
 }
 
+GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
+{
+	//https://en.wikipedia.org/wiki/Path_tracing
+	L_RESULT lre = castLightRay(pos, dir, vec3(1.0), id);
+
+	vec3 m = lre.m;
+	vec3 em = vec3(1.0); //Amount of light that has fallen on the current position, aka light level of object at this position;
+	float reflectance = 0.5;
+
+	vec3 p = pos + dir*lre.t;
+	vec3 nor = calcNormal(p);
+	vec3 rd = reflect(dir, nor);
+
+	float cos_theta = dot(rd, nor);
+	float BRDF = 2.0 * reflectance * cos_theta;
+	//vec3 reflected = GI_TracePath(p, rd, lre.id);
+
+	//return em + (BRDF * reflected);
+
+	GI_TRACE gre;
+	gre.em = em;
+	gre.BRDF = BRDF;
+	gre.p = p;
+	gre.rd = rd;
+	gre.id = id;
+
+	return gre;
+}
+
 vec3 render( in vec3 ro, in vec3 rd )
 {
 	vec3 col = vec3(0.7, 0.9, 1.0) + rd.y*0.8;
@@ -301,14 +390,14 @@ vec3 render( in vec3 ro, in vec3 rd )
 	int id = r.i;
   float t = res.x;
 	vec3 m = res.yzw;
-	
+
 	if (m != vec3(-15.0))
 	{
 		vec3 pos = ro + t*rd;
 		vec3 nor = calcNormal( pos );
 		vec3 ref = reflect( rd, nor );
-		
-		// material        
+
+		// material
 		col = m;
 		if (m.x == -2.0)
 		{
@@ -326,58 +415,79 @@ vec3 render( in vec3 ro, in vec3 rd )
 		float occ = calcAO( pos, nor );
 		for (int i=0; i<light_amount; i++)
 		{
-			if (lights[i].Type == 1) {
-				vec3 lig = normalize(lights[i].d);
-				float dif = clamp( dot( nor, lig ), 0.0, 1.0 );
-				float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0);
-				float dom = smoothstep( -0.1, 0.1, ref.y );
-				float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 );
-				float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0);
-				float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 );
-				
-				dif *= softshadow( pos, lig, 0.02, 2.5 );
-				dom *= softshadow( pos, ref, 0.02, 2.5 );
+			if (GI>0) {
+				if (lights[i].Type == 1) {
+					vec3 GI_Color = vec3(0.0);
 
-				vec3 lin = vec3(0.0);
-				lin += 1.30*dif*lights[i].color;
-				lin += 2.00*spe*lights[i].color*dif;
-				lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-				lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-				lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
-				lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
-				c = c + col*lin;
+					vec3 p = lights[i].p;
+					vec3 d = lights[i].d;
+					int gi_id = id;
 
-				//col = mix( col, vec3(0.8,0.9,1.0), 1.0-exp( -0.0002*t*t*t ) );
-			}
-			if (lights[i].Type == 2) {
-				float dist = abs(length(lights[i].p - pos))/lights[i].d.x;
-				vec3 lig = lights[i].p - pos;
-				float dif = 1.0 - clamp( dist, 0.0, 1.0 );
-				float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0) * dif;
-				float dom = smoothstep( -0.1, 0.1, ref.y ) * dif;
-				float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 ) * dif;
-				float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0) * dif;
-				float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 ) * dif;
-				
-				dif *= softshadow( pos, lig, 0.02, 2.5 );
-				dom *= softshadow( pos, ref, 0.02, 2.5 );
+					for (int depth=0; depth<GI_maxBounces; depth++) {
+						GI_TRACE gre = GI_TracePath(p, d, gi_id);
+						p = gre.p;
+						d = gre.rd;
+						gi_id = gre.id;
 
-				vec3 lin = vec3(0.0);
-				lin += 1.30*dif*lights[i].color;
-				lin += 2.00*spe*lights[i].color;
-				lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-				lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-				lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
-				lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
-				c = c + col*lin;
+						GI_Color += gre.em + gre.BRDF * GI_Color;
+					}
 
-				//c = mix( c, vec3(0.8,0.9,1.0), 1.0-exp( -0.0002*t*t*t ) );
+					c = c + col*GI_Color*max(lights[i].color,vec3(1.0));
+				}
+			} else {
+				if (lights[i].Type == 1) { //Directional Light
+					vec3 lig = normalize(lights[i].d);
+					float dif = clamp( dot( nor, lig ), 0.0, 1.0 );
+					float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0);
+					float dom = smoothstep( -0.1, 0.1, ref.y );
+					float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 );
+					float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0);
+					float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 );
+
+					dif *= softshadow( pos, lig, 0.02, 2.5 );
+					dom *= softshadow( pos, ref, 0.02, 2.5 );
+
+					vec3 lin = vec3(0.0);
+					lin += 1.30*dif*lights[i].color;
+					lin += 2.00*spe*lights[i].color*dif;
+					lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
+					lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
+					c = c + col*lin;
+
+					//col = mix( col, vec3(0.8,0.9,1.0), 1.0-exp( -0.0002*t*t*t ) );
+				}
+				else if (lights[i].Type == 2) { //Point Light
+					float dist = abs(length(lights[i].p - pos))/lights[i].d.x;
+					vec3 lig = lights[i].p - pos;
+					float dif = 1.0 - clamp( dist, 0.0, 1.0 );
+					float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0) * dif;
+					float dom = smoothstep( -0.1, 0.1, ref.y ) * dif;
+					float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 ) * dif;
+					float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0) * dif;
+					float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 ) * dif;
+
+					dif *= softshadow( pos, lig, 0.02, 2.5 );
+					dom *= softshadow( pos, ref, 0.02, 2.5 );
+
+					vec3 lin = vec3(0.0);
+					lin += 1.30*dif*lights[i].color;
+					lin += 2.00*spe*lights[i].color;
+					lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
+					lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
+					c = c + col*lin;
+
+					//c = mix( c, vec3(0.8,0.9,1.0), 1.0-exp( -0.0002*t*t*t ) );
+				}
 			}
 		}
-		
+
 		vec3 fog_pos = pos - cam_pos;
 		c = c + calcFog(fog_pos, rd);
-		
+
 		//Physics
 		COLRESULT colres = calcCollision(pos, nor);
 		if (colres.b == 1)
@@ -404,7 +514,7 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
 {
 	vec2 fragCoord = vec2(screen_coords.x, love_ScreenSize.y - screen_coords.y);
 	float time = 15.0 + iTime.x;
-    
+
   vec3 tot = vec3(0.0,0.0,0.0);
 #if AA>1
   for( int m=0; m<AA; m++ )
@@ -413,11 +523,11 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // pixel coordinates
     vec2 o = vec2(float(m),float(n)) / float(AA) - 0.5;
     vec2 p = (-love_ScreenSize.xy + 2.0*(fragCoord+o))/love_ScreenSize.y;
-#else    
+#else
     vec2 p = (-love_ScreenSize.xy + 2.0*fragCoord)/love_ScreenSize.y;
 #endif
-	
-		// camera	
+
+		// camera
     vec3 ro = cam_pos;
 		vec3 ta = cam_pos + cam_dir;
 		// camera-to-world matrix
@@ -425,7 +535,7 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     // ray direction
     vec3 rd = ca * normalize(vec3(p.xy,2.0));
 
-    // render	
+    // render
     vec3 col = render( ro, rd );
 
 		// gamma
@@ -436,6 +546,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     }
     tot /= float(AA*AA);
 #endif
-    
+
     return vec4( tot, 1.0 );
 }

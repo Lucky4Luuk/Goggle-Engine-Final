@@ -24,7 +24,7 @@ local view_distance = 20.0
 
 function updateObjectsList()
 	local obj_amount = 0
-	
+
 	for i,ob in ipairs(objects) do
 		local models = ob[2]
 		for j,o in ipairs(models) do
@@ -48,13 +48,13 @@ function updateObjectsList()
 			obj_amount = obj_amount + 1
 		end
 	end
-	
+
 	shader:send("object_amount",obj_amount)
 end
 
 function updateLightsList()
 	local light_amount = 0
-	
+
 	for i,l in ipairs(lights) do
 		local c = {l[4][1]/255,l[4][2]/255,l[4][3]/255}
 		local t = 0
@@ -83,22 +83,22 @@ end
 function love.load()
 	--Create canvas for scaling
 	canvas = love.graphics.newCanvas(width,height)
-	
+
 	--Load shader
 	shader = love.graphics.newShader("shaders/fragment.glsl")
-	
+
 	--Load testing data
 	loadModel("floor.dmod")
 	loadModel("test.dmod")
-	
+
 	--Send data to shader
 	updateObjectsList()
 	shader:send("fog_density",fog_density)
 	shader:send("view_distance",view_distance)
-	
+
 	--Reset mouse at start so the camera doesn't get offset before starting.
 	love.mouse.setPosition(width/2, height/2)
-	
+
 	--Reset camera direction in case it rotated.
 	cam_dir = {1,0,0}
 end
@@ -106,20 +106,20 @@ end
 function rotateCamera()
 	local mouseDeltaX = love.mouse.getX() - width/2
 	local mouseDeltaY = love.mouse.getY() - height/2
-	
+
 	local qx = math.rad(mouseDeltaX*sensitivityX)
 	local qy = -math.rad(mouseDeltaY*sensitivityY)
-	
+
 	local x = cam_dir[1]
 	local z = cam_dir[3]
-	
+
 	--X-Axis Rotation
 	cam_dir[2] = cam_dir[2] + qy
-	
+
 	--Y-Axis Rotation
 	cam_dir[1] = x*math.cos(qx) - z*math.sin(qx)
 	cam_dir[3] = z*math.cos(qx) + x*math.sin(qx)
-	
+
 	love.mouse.setPosition(width/2, height/2)
 end
 
@@ -150,20 +150,20 @@ end
 function love.update(dt)
 	iTime = iTime + dt
 	iTimeDelta = dt
-	
+
 	rotateCamera()
 	moveCamera(dt)
 	updateObjectsList()
 	updateLightsList()
 end
 
-function love.draw()	
+function love.draw()
 	--Set variables
 	--shader:send("iTime",{iTime,iTimeDelta})
 	--shader:send("iResolution",{love.graphics.getWidth(),love.graphics.getHeight()})
 	shader:send("cam_dir",cam_dir)
 	shader:send("cam_pos",cam_pos)
-	
+
 	--Draw Stuff
 	--love.graphics.setCanvas(canvas)
 	love.graphics.setShader(shader)
@@ -171,7 +171,7 @@ function love.draw()
 	love.graphics.rectangle("fill",0,0,love.graphics.getWidth(),love.graphics.getHeight())
 	--love.graphics.setCanvas()
 	--love.graphics.draw(canvas)
-	
+
 	--FPS Counter
 	love.graphics.setShader()
 	love.graphics.setColor(255,255,255,255)
@@ -191,7 +191,7 @@ function love.keypressed(k)
 		table.sort(modes, function(a, b) return a.width*a.height < b.width*b.height end)   --Sort from smallest to largest
 		if fullscreen == true then
 			fullscreen = false
-			love.window.setMode(800,480)
+			love.window.setMode(800,480, {vsync=false})
 			width = 800
 			height = 480
 			love.window.setFullscreen(false)
@@ -202,7 +202,7 @@ function love.keypressed(k)
 			width = modes[#modes].width
 			height = modes[#modes].height
 			print(width,height)
-			love.window.setMode(width,height)
+			love.window.setMode(width,height, {vsync=false})
 			love.window.setFullscreen(true)
 			canvas = love.graphics.newCanvas(width,height)
 			updateObjectsList()
