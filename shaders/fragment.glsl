@@ -1,5 +1,5 @@
 #define AA 1
-#define GI 1
+#define GI 0
 
 int GI_maxDistance = 20;
 int GI_maxBounces = 4;
@@ -155,8 +155,9 @@ RESULT map(vec3 pos)
 		}
 		id = objects[0].i;
 
-		for (int o = 1; o < object_amount; o++)
+		for (int o = 1; o < 256; o++)
 		{
+			if (o > object_amount) break;
 			if (objects[o].Type == 1)
 			{
 				float q = sdPlane(pos - objects[o].p);
@@ -357,11 +358,13 @@ GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
 	L_RESULT lre = castLightRay(pos, dir, vec3(1.0), id);
 
 	vec3 m = lre.m;
-	vec3 em = vec3(1.0); //Amount of light that has fallen on the current position, aka light level of object at this position;
-	float reflectance = 0.5;
-
 	vec3 p = pos + dir*lre.t;
 	vec3 nor = calcNormal(p);
+	//vec3 em = softshadow(p, dir, 0.02, 2.5) * dot(dir, nor) * m * 0.5; //Amount of light that has bounced off the current position, aka light level of object at this position
+	vec3 em = m * 1.0;
+
+	float reflectance = 0.5;
+
 	vec3 rd = reflect(dir, nor);
 
 	float cos_theta = dot(rd, nor);
@@ -413,8 +416,9 @@ vec3 render( in vec3 ro, in vec3 rd )
 
 		// lighting
 		float occ = calcAO( pos, nor );
-		for (int i=0; i<light_amount; i++)
+		for (int i=0; i<128; i++)
 		{
+			if (i>light_amount) break;
 			if (GI>0) {
 				if (lights[i].Type == 1) {
 					vec3 GI_Color = vec3(0.0);
@@ -423,16 +427,27 @@ vec3 render( in vec3 ro, in vec3 rd )
 					vec3 d = lights[i].d;
 					int gi_id = id;
 
-					for (int depth=0; depth<GI_maxBounces; depth++) {
-						GI_TRACE gre = GI_TracePath(p, d, gi_id);
-						p = gre.p;
-						d = gre.rd;
-						gi_id = gre.id;
+					GI_TRACE gre_one = GI_TracePath(p, d, gi_id);
+					GI_TRACE gre_two = GI_TracePath(gre_one.p, gre_one.rd, gre_one.id);
+					GI_TRACE gre_three = GI_TracePath(gre_two.p, gre_two.rd, gre_two.id);
 
-						GI_Color += gre.em + gre.BRDF * GI_Color;
-					}
+					vec3 reflected_two = gre_three.em + gre_three.BRDF * vec3(0.0);
+					vec3 reflected_one = gre_two.em + gre_three.BRDF * reflected_two;
 
-					c = c + col*GI_Color*max(lights[i].color,vec3(1.0));
+					// for (int depth=0; depth<GI_maxBounces; depth++) {
+					// 	GI_TRACE gre = GI_TracePath(p, d, gi_id);
+					// 	p = gre.p;
+					// 	d = gre.rd;
+						// gi_id = gre.id;
+
+						// reflected = gre.em + gre.BRDF * reflected;
+						// last_gre = gre;
+					// }
+
+					// GI_Color += last_gre.em + last_gre.BRDF * reflected;
+					GI_Color = gre_one.em + gre_one.BRDF * reflected_one;
+
+					c = c + col*GI_Color*max(lights[i].color, vec3(1.0));
 				}
 			} else {
 				if (lights[i].Type == 1) { //Directional Light
@@ -487,13 +502,6 @@ vec3 render( in vec3 ro, in vec3 rd )
 
 		vec3 fog_pos = pos - cam_pos;
 		c = c + calcFog(fog_pos, rd);
-
-		//Physics
-		COLRESULT colres = calcCollision(pos, nor);
-		if (colres.b == 1)
-		{
-			c = c * vec3(1.0,0.0,0.0);
-		}
 	} else {
 		return (vec3(0.7, 0.9, 1.0) + rd.y*0.8);
 	}
@@ -546,6 +554,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     }
     tot /= float(AA*AA);
 #endif
-
+	//tot = pow(tot, vec3(1.0/2.2));
     return vec4( tot, 1.0 );
 }
