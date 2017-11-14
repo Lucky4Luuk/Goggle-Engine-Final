@@ -1,6 +1,5 @@
 --LOVE 3D ENGINE
 
-require("distance_functions")
 require("mesh2sdf")
 require("utils")
 
