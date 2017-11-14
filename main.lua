@@ -1,6 +1,8 @@
 --LOVE 3D ENGINE
 
 require("distance_functions")
+require("mesh2sdf")
+require("utils")
 
 local debug = false
 
@@ -10,7 +12,7 @@ local iTime = 0
 local iTimeDelta = 0
 local canvas = nil
 local cam_dir = {1,0,0}
-local cam_pos = {3,1,0}
+local cam_pos = {-3,1,-3}
 local shader = nil
 local sensitivityX = 0.5
 local sensitivityY = 0.5
@@ -25,28 +27,12 @@ local view_distance = 20.0
 function updateObjectsList()
 	local obj_amount = 0
 
-	for i,ob in ipairs(objects) do
-		local models = ob[2]
-		for j,o in ipairs(models) do
-			local alpha = o[5]
-			local t = 0
-			local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
-			if o[1] == "Plane" then
-				t = 1
-			elseif o[1] == "Sphere" then
-				t = 2
-			elseif o[1] == "uBox" then
-				t = 3
-			elseif o[1] == "Box" then
-				t = 4
-			end
-			shader:send("objects["..tostring(i-1+j-1).."].Type",t)
-			shader:send("objects["..tostring(i-1+j-1).."].i",i-1+j-1)
-			shader:send("objects["..tostring(i-1+j-1).."].p",o[2])
-			shader:send("objects["..tostring(i-1+j-1).."].b",o[3])
-			shader:send("objects["..tostring(i-1+j-1).."].color",c)
-			obj_amount = obj_amount + 1
-		end
+	for i, o in ipairs(objects) do
+		shader:send("objects["..obj_amount.."].p", o.p)
+		shader:send("objects["..obj_amount.."].mesh", o.mesh)
+		shader:send("objects["..obj_amount.."].color", o.color)
+		-- shader:send("objects["..obj_amount.."].id", o.id)
+		obj_amount = obj_amount + 1
 	end
 
 	shader:send("object_amount",obj_amount)
@@ -72,12 +58,19 @@ function updateLightsList()
 	shader:send("light_amount",light_amount)
 end
 
-function loadModel(filename)
+function old_loadModel(filename)
 	local f = assert(io.open("assets/"..filename, "r"))
 	for line in f:lines() do
 		local object = loadstring("return "..line)()
 		table.insert(objects,object)
 	end
+end
+
+function loadModel(filename)
+	--Generate SDF from models
+	local mesh = genSDF(filename)
+	local o = {mesh=mesh, p={2,0,0}, color={1,1,1}}
+	table.insert(objects, o)
 end
 
 function love.load()
@@ -88,8 +81,10 @@ function love.load()
 	shader = love.graphics.newShader("shaders/fragment.glsl")
 
 	--Load testing data
-	loadModel("floor.dmod")
-	loadModel("test.dmod")
+	-- loadModel("floor.dmod")
+	-- loadModel("test.dmod")
+	-- loadModel("assets/tigre_sumatra_sketchfab.obj")
+	loadModel("assets/tetrahedron.obj")
 
 	--Send data to shader
 	updateObjectsList()

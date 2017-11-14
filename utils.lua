@@ -22,8 +22,27 @@ end
 function lines_from(file)
   if not file_exists(file) then return {} end
   lines = {}
-  for line in io.lines(file) do 
+  for line in io.lines(file) do
     lines[#lines + 1] = line
   end
   return lines
+end
+
+function saveImage(data, filename)
+  local file = io.open(filename,"w")
+  file:close()
+  file = io.open(filename,"wb")
+  file:write(data)
+  file:close()
+end
+
+function print_table(t)
+  local s = "{"
+  for i=1,#t do
+    s = s .. tostring(t[i])
+    if i < #t then
+      s = s .. ", "
+    end
+  end
+  print(s.."}")
 end

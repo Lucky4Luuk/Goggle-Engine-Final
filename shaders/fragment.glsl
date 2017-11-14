@@ -11,12 +11,10 @@ uniform int object_amount;
 uniform int light_amount;
 uniform struct Object
 {
-	int Type;
 	int i; //Object ID
 	vec3 p; //Vector 3: position
-	vec3 b; //Vector 3: size (if sphere, only x is used)
+	sampler3D mesh;
 	vec3 color;
-	float alpha;
 } objects[30];
 uniform struct Light
 {
@@ -107,6 +105,15 @@ float fmod(float a, float b)
     return mod(a, b);
 }
 
+float sdMesh(vec3 p, sampler3D mesh)
+{
+	// vec3 pos = floor(p + vec3(0.5));
+	vec3 pos = p;
+	pos *= 126;
+	float d = texture3D(mesh, pos).r;
+	return d;
+}
+
 RESULT map(vec3 pos)
 {
 	//vec3 cp = vec3(0.0,0.0,0.0);
@@ -126,81 +133,33 @@ RESULT map(vec3 pos)
     //        udBox(pos - vec3(-1.0,0.5 * (sin(iTime.x))/1.0,-1.0) + cp,vec3(0.5,0.5,0.5)));
     //res = opU(res, vec2(b,22.4));
 
-	vec4 res = vec4(-1.0);
-	int id = 0;
-	float closest;
+	vec4 res = vec4(sdPlane(pos), 0.8, 0.8, 0.8);
+	res = opU(res, vec4(sdBox(pos - vec3(0.0, 0.5, 0.0), vec3(0.5)), 0.5, 0.3, 1.0));
+	float closest = 5000.0;
+	int id = -1;
 
 	if (object_amount > 0)
 	{
-		if (objects[0].Type == 1)
-		{
-			float q = sdPlane(pos - objects[0].p);
-			res = vec4(q,objects[0].color);
-			closest = q;
-		} else if (objects[0].Type == 2)
-		{
-			float q = sdSphere(pos - objects[0].p,objects[0].b.x);
-			res = vec4(q,objects[0].color);
-			closest = q;
-		} else if (objects[0].Type == 3)
-		{
-			float q = udBox(pos - objects[0].p,objects[0].b);
-			res = vec4(q,objects[0].color);
-			closest = q;
-		} else if (objects[0].Type == 4)
-		{
-			float q = sdBox(pos - objects[0].p,objects[0].b);
-			res = vec4(q,objects[0].color);
-			closest = q;
-		}
-		id = objects[0].i;
-
-		for (int o = 1; o < 256; o++)
+		for (int o = 0; o < 256; o++)
 		{
 			if (o > object_amount) break;
-			if (objects[o].Type == 1)
+			vec3 p = pos - objects[o].p;
+			if (p.x > 0.0 && p.y > 0.0 && p.z > 0.0 && p.x < 1.0 && p.y < 1.0 && p.z < 1.0)
 			{
-				float q = sdPlane(pos - objects[o].p);
-				res = opU(res,vec4(q,objects[o].color));
-				if (q < closest)
+				float d = sdMesh(p, objects[o].mesh);
+				res = opU(res, vec4(d, vec3(d)));
+				if (res.x < closest)
 				{
-					closest = q;
-					id = objects[o].i;
-				}
-			} else if (objects[o].Type == 2)
-			{
-				float q = sdSphere(pos - objects[o].p,objects[o].b.x);
-				res = opU(res,vec4(q,objects[o].color));
-				if (q < closest)
-				{
-					closest = q;
-					id = objects[o].i;
-				}
-			} else if (objects[o].Type == 3)
-			{
-				float q = udBox(pos - objects[o].p,objects[o].b);
-				res = opU(res,vec4(q,objects[o].color));
-				if (q < closest)
-				{
-					closest = q;
-					id = objects[o].i;
-				}
-			} else if (objects[o].Type == 4)
-			{
-				float q = sdBox(pos - objects[o].p,objects[o].b);
-				res = opU(res,vec4(q,objects[o].color));
-				if (q < closest)
-				{
-					closest = q;
-					id = objects[o].i;
+					closest = res.x;
+					id = o;
 				}
 			}
 		}
 	}
-    RESULT r;
-		r.re = res;
-		r.i = id;
-    return r;
+  RESULT r;
+	r.re = res;
+	r.i = id;
+  return r;
 }
 
 RESULT castRay(vec3 pos, vec3 dir)
