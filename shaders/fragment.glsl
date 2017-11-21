@@ -34,24 +34,17 @@ struct RESULT {
 	int i;
 };
 
-struct COLRESULT {
-	int b;
-	int id;
-	vec3 pos;
-};
-
 struct L_RESULT {
 	float t;
-	vec3 m;
+	vec4 m; //Material
 	int id;
 };
 
 struct GI_TRACE {
-	vec3 p;
-	vec3 rd;
-	vec3 em;
-	float BRDF;
+	vec3 pos;
+	vec3 dir;
 	int id;
+	vec4 m; //Material
 };
 
 vec4 opU( vec4 d1, vec4 d2 )
@@ -157,7 +150,7 @@ RESULT map(vec3 pos)
 
 		for (int o = 1; o < 256; o++)
 		{
-			if (o > object_amount) break;
+			if (o>object_amount) break;
 			if (objects[o].Type == 1)
 			{
 				float q = sdPlane(pos - objects[o].p);
@@ -270,7 +263,7 @@ L_RESULT castLightRay(vec3 pos, vec3 dir, vec3 light_color, int cur_id)
 
 		L_RESULT lre;
 		lre.t = t;
-		lre.m = m;
+		lre.m = vec4(m,0.5);
 		lre.id = id;
 
     return lre;
@@ -322,26 +315,6 @@ float calcAO( in vec3 pos, in vec3 nor )
   return clamp( 1.0 - 3.0*occ, 0.0, 1.0 );
 }
 
-COLRESULT calcCollision(in vec3 pos, in vec3 nor)
-{
-	COLRESULT cr;
-	cr.b = 0;
-	for (int i=1; i<2; i++)
-	{
-		float hr = 0.01 + 0.12*float(i)/4.0;
-		vec3 colpos = nor * hr + pos;
-		float dd = map(colpos).re.x;
-		if (dd < 0.01)
-		{
-			cr.b = 1;
-			cr.id = map(colpos).i;
-			cr.pos = objects[cr.id].p;
-			return cr;
-		}
-	}
-	return cr;
-}
-
 vec3 calcFog(vec3 pos, vec3 rd)
 {
 	float d = length(pos)*0.6*fog_density;
@@ -355,30 +328,15 @@ vec3 calcFog(vec3 pos, vec3 rd)
 GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
 {
 	//https://en.wikipedia.org/wiki/Path_tracing
+	//http://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing
 	L_RESULT lre = castLightRay(pos, dir, vec3(1.0), id);
-
-	vec3 m = lre.m;
-	vec3 p = pos + dir*lre.t;
-	vec3 nor = calcNormal(p);
-	//vec3 em = softshadow(p, dir, 0.02, 2.5) * dot(dir, nor) * m * 0.5; //Amount of light that has bounced off the current position, aka light level of object at this position
-	vec3 em = m * 1.0;
-
-	float reflectance = 0.5;
-
-	vec3 rd = reflect(dir, nor);
-
-	float cos_theta = dot(rd, nor);
-	float BRDF = 2.0 * reflectance * cos_theta;
-	//vec3 reflected = GI_TracePath(p, rd, lre.id);
-
-	//return em + (BRDF * reflected);
-
 	GI_TRACE gre;
-	gre.em = em;
-	gre.BRDF = BRDF;
-	gre.p = p;
-	gre.rd = rd;
-	gre.id = id;
+
+	gre.pos = pos + dir*lre.t;
+
+	vec3 nor = calcNormal(pos);
+	gre.dir = reflect(dir,nor);
+	gre.m = lre.m;
 
 	return gre;
 }
@@ -421,33 +379,47 @@ vec3 render( in vec3 ro, in vec3 rd )
 			if (i>light_amount) break;
 			if (GI>0) {
 				if (lights[i].Type == 1) {
-					vec3 GI_Color = vec3(0.0);
+					//Direct lighting
+					vec3 lig = normalize(lights[i].d);
+					float dif = clamp( dot( nor, lig ), 0.0, 1.0 );
+					float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0);
+					float dom = smoothstep( -0.1, 0.1, ref.y );
+					float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 );
+					float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0);
+					// float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 );
 
-					vec3 p = lights[i].p;
-					vec3 d = lights[i].d;
-					int gi_id = id;
+					dif *= softshadow( pos, lig, 0.02, 2.5 );
+					dom *= softshadow( pos, ref, 0.02, 2.5 );
 
-					GI_TRACE gre_one = GI_TracePath(p, d, gi_id);
-					GI_TRACE gre_two = GI_TracePath(gre_one.p, gre_one.rd, gre_one.id);
-					GI_TRACE gre_three = GI_TracePath(gre_two.p, gre_two.rd, gre_two.id);
+					vec3 lin = vec3(0.0);
+					lin += 1.30*dif*lights[i].color;
+					lin += 2.00*spe*lights[i].color*dif;
+					// lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
+					lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
+					lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
 
-					vec3 reflected_two = gre_three.em + gre_three.BRDF * vec3(0.0);
-					vec3 reflected_one = gre_two.em + gre_three.BRDF * reflected_two;
-
-					// for (int depth=0; depth<GI_maxBounces; depth++) {
+					//Indirect lighting
+					// vec3 GI_Color = vec3(0.0);
+					//
+					// vec3 p = pos;
+					// vec3 d = rd;
+					// int gi_id = id;
+					//
+					// for (int depth=0; depth<16; depth++) {
+					// 	if (depth>GI_maxBounces) break;
 					// 	GI_TRACE gre = GI_TracePath(p, d, gi_id);
-					// 	p = gre.p;
-					// 	d = gre.rd;
-						// gi_id = gre.id;
-
-						// reflected = gre.em + gre.BRDF * reflected;
-						// last_gre = gre;
+					// 	p = gre.pos;
+					// 	d = gre.dir;
+					// 	gi_id = gre.id;
+					//
+					// 	GI_Color += gre.m.rgb * gre.m.w;
 					// }
 
-					// GI_Color += last_gre.em + last_gre.BRDF * reflected;
-					GI_Color = gre_one.em + gre_one.BRDF * reflected_one;
+					// c = c + col*lin + GI_Color;
 
-					c = c + col*GI_Color*max(lights[i].color, vec3(1.0));
+					vec3 GI_Color = vec3(0.0);
+
 				}
 			} else {
 				if (lights[i].Type == 1) { //Directional Light
@@ -554,6 +526,6 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
     }
     tot /= float(AA*AA);
 #endif
-	//tot = pow(tot, vec3(1.0/2.2));
+
     return vec4( tot, 1.0 );
 }
