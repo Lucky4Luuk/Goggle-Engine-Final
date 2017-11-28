@@ -1,4 +1,4 @@
-#define AA 1
+#define AA 2
 #define GI 0
 
 int GI_maxDistance = 20;
@@ -148,7 +148,7 @@ RESULT map(vec3 pos)
 		}
 		id = objects[0].i;
 
-		for (int o = 1; o < 256; o++)
+		for (int o = 1; o < 1024; o++)
 		{
 			if (o>object_amount) break;
 			if (objects[o].Type == 1)
@@ -374,7 +374,7 @@ vec3 render( in vec3 ro, in vec3 rd )
 
 		// lighting
 		float occ = calcAO( pos, nor );
-		for (int i=0; i<128; i++)
+		for (int i=0; i<1024; i++)
 		{
 			if (i>light_amount) break;
 			if (GI>0) {

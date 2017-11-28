@@ -3,8 +3,9 @@
 require("distance_functions")
 require("renderer")
 require("filesystem")
+require("physics")
 
-local debug = {FPS=true, CAMERA=false}
+local debug = {FPS=true, CAMERA=false, ERROR=true}
 
 local width = 800
 local height = 480
@@ -26,12 +27,14 @@ local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}},{"Point",{
 local fog_density = 0.1
 local view_distance = 20.0
 
+local errors = {}
+
 function setSize(w, h)
 	width = w
 	height = h
 	canvas = love.graphics.newCanvas(width,height)
 	scale = {width / love.graphics.getWidth(), height / love.graphics.getHeight()}
-	setCanvas(love.graphics.newCanvas(width,height))
+	local status = setCanvas(love.graphics.newCanvas(width,height))
 end
 
 function loadModel(name)
@@ -41,13 +44,18 @@ function loadModel(name)
 	end
 end
 
+function handleError(status)
+	if status ~= true then
+		table.insert(errors, status)
+	end
+end
+
 function love.load()
 	--Create canvas for scaling
 	setSize(width, height)
 	setCanvas(love.graphics.newCanvas(width,height))
 
 	--Load shader
-	-- shader = love.graphics.newShader("shaders/fragment.glsl")
 	setShader(love.graphics.newShader("shaders/fragment.glsl"))
 
 	--Load testing data
@@ -63,6 +71,10 @@ function love.load()
 	love.mouse.setPosition(width/2, height/2)
 
 	--Reset camera direction in case it rotated.
+	resetCamera()
+end
+
+function resetCamera()
 	cam_dir = {1,0,0}
 	local dx = cam_dir[1]*math.cos(math.rad(45)) - cam_dir[3]*math.sin(math.rad(45))
 	local dy = cam_dir[3]*math.cos(math.rad(45)) + cam_dir[1]*math.sin(math.rad(45))
@@ -141,6 +153,7 @@ function love.draw()
 
 	--FPS Counter
 	love.graphics.setShader()
+	love.graphics.setBlendMode("subtract")
 	love.graphics.setColor(255,255,255,255)
 	local dy = 0
 	if debug.FPS then
@@ -153,6 +166,7 @@ function love.draw()
 		love.graphics.print("CAM_DIR: ("..tostring(cam_dir[1]).."; "..tostring(cam_dir[2]).."; "..tostring(cam_dir[3])..")",0,dy)
 		dy = dy + 20
 	end
+	love.graphics.setBlendMode("alpha")
 end
 
 function love.keypressed(k)

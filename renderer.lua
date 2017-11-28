@@ -32,16 +32,16 @@ function updateObjectsList(objects)
 			elseif o[1] == "Box" then
 				t = 4
 			end
-			shader:send("objects["..tostring(i-1+j-1).."].Type",t)
-			shader:send("objects["..tostring(i-1+j-1).."].i",i-1+j-1)
-			shader:send("objects["..tostring(i-1+j-1).."].p",o[2])
-			shader:send("objects["..tostring(i-1+j-1).."].b",o[3])
-			shader:send("objects["..tostring(i-1+j-1).."].color",c)
+			send("objects["..tostring(i-1+j-1).."].Type",t)
+			send("objects["..tostring(i-1+j-1).."].i",i-1+j-1)
+			send("objects["..tostring(i-1+j-1).."].p",o[2])
+			send("objects["..tostring(i-1+j-1).."].b",o[3])
+			send("objects["..tostring(i-1+j-1).."].color",c)
 			obj_amount = obj_amount + 1
 		end
 	end
 
-	shader:send("object_amount",obj_amount)
+	send("object_amount",obj_amount)
 end
 
 function updateLightsList(lights)
@@ -55,21 +55,23 @@ function updateLightsList(lights)
 		elseif l[1] == "Point" then
 			t = 2
 		end
-		shader:send("lights["..tostring(i-1).."].Type",t)
-		shader:send("lights["..tostring(i-1).."].p",l[2])
-		shader:send("lights["..tostring(i-1).."].d",l[3])
-		shader:send("lights["..tostring(i-1).."].color",c)
+		send("lights["..tostring(i-1).."].Type",t)
+		send("lights["..tostring(i-1).."].p",l[2])
+		send("lights["..tostring(i-1).."].d",l[3])
+		send("lights["..tostring(i-1).."].color",c)
 		light_amount = light_amount + 1
 	end
-	shader:send("light_amount",light_amount)
+	send("light_amount",light_amount)
 end
 
 function setCanvas(c)
   canvas = c
+  return true
 end
 
 function setShader(s)
   shader = s
+  return true
 end
 
 function send(name, value)
