@@ -75,6 +75,10 @@ function max(f1, f2)
 	return math.max(f1,f2)
 end
 
+function vec_distance(p1, p2)
+	return abs(length(vec_minus(p1, p2)))
+end
+
 --------------
 --Primitives--
 --------------

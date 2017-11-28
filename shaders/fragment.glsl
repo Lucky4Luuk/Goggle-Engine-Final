@@ -1,4 +1,4 @@
-#define AA 2
+#define AA 1
 #define GI 0
 
 int GI_maxDistance = 20;
@@ -27,6 +27,7 @@ uniform struct Light
 } lights[50];
 uniform float fog_density;
 uniform float view_distance;
+uniform vec2 screen_res;
 
 //Define RESULT
 struct RESULT {
@@ -492,7 +493,7 @@ mat3 setCamera( in vec3 ro, in vec3 ta, float cr )
 
 vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
 {
-	vec2 fragCoord = vec2(screen_coords.x, love_ScreenSize.y - screen_coords.y);
+	vec2 fragCoord = vec2(screen_coords.x, screen_res.y - screen_coords.y);
 	float time = 15.0 + iTime.x;
 
   vec3 tot = vec3(0.0,0.0,0.0);
@@ -502,9 +503,9 @@ vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
   {
     // pixel coordinates
     vec2 o = vec2(float(m),float(n)) / float(AA) - 0.5;
-    vec2 p = (-love_ScreenSize.xy + 2.0*(fragCoord+o))/love_ScreenSize.y;
+    vec2 p = (-screen_res.xy + 2.0*(fragCoord+o))/screen_res.y;
 #else
-    vec2 p = (-love_ScreenSize.xy + 2.0*fragCoord)/love_ScreenSize.y;
+    vec2 p = (-screen_res.xy + 2.0*fragCoord)/screen_res.y;
 #endif
 
 		// camera

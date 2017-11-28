@@ -5,17 +5,18 @@ require("renderer")
 require("filesystem")
 require("physics")
 
-local debug = {FPS=true, CAMERA=false, ERROR=true}
+local debug = {FPS=true, CAMERA=true, ERROR=true}
 
-local width = 800
-local height = 480
-local min_width = 800
-local min_height = 480
+local width = 768
+local height = 432
+local min_width = width
+local min_height = height
 local iTime = 0
 local iTimeDelta = 0
 -- local canvas = nil
 local cam_dir = {1,0,0}
 local cam_pos = {3,1,0}
+local default_cam_dir = cam_dir
 -- local shader = nil
 local sensitivityX = 0.5
 local sensitivityY = 0.5
@@ -29,12 +30,15 @@ local view_distance = 20.0
 
 local errors = {}
 
+local first_frame = true
+
 function setSize(w, h)
 	width = w
 	height = h
 	canvas = love.graphics.newCanvas(width,height)
 	scale = {width / love.graphics.getWidth(), height / love.graphics.getHeight()}
 	local status = setCanvas(love.graphics.newCanvas(width,height))
+	status = setRenderSize(w, h)
 end
 
 function loadModel(name)
@@ -84,8 +88,8 @@ function resetCamera()
 end
 
 function rotateCamera()
-	local mouseDeltaX = love.mouse.getX() - width/2
-	local mouseDeltaY = love.mouse.getY() - height/2
+	local mouseDeltaX = love.mouse.getX() - love.graphics.getWidth()/2
+	local mouseDeltaY = love.mouse.getY() - love.graphics.getHeight()/2
 
 	local qx = math.rad(mouseDeltaX*sensitivityX)
 	local qy = -math.rad(mouseDeltaY*sensitivityY)

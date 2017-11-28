@@ -14,28 +14,35 @@ function setCamera(pos, dir)
   cam_dir = dir
 end
 
+function setRenderSize(w, h)
+  width = w
+  height = h
+  return true
+end
+
 function updateObjectsList(objects)
 	local obj_amount = 0
 
 	for i,ob in ipairs(objects) do
-		local models = ob[2]
-		for j,o in ipairs(models) do
-			local alpha = o[5]
+		local models = ob[1]
+		for j, o in ipairs(models) do
+			local alpha = o.alpha
 			local t = 0
-			local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
-			if o[1] == "Plane" then
+			--local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
+      local c = {o.color[1]/255, o.color[2]/255, o.color[3]/255}
+			if o.t == "Plane" then
 				t = 1
-			elseif o[1] == "Sphere" then
+			elseif o.t == "Sphere" then
 				t = 2
-			elseif o[1] == "uBox" then
+			elseif o.t == "uBox" then
 				t = 3
-			elseif o[1] == "Box" then
+			elseif o.t == "Box" then
 				t = 4
 			end
 			send("objects["..tostring(i-1+j-1).."].Type",t)
 			send("objects["..tostring(i-1+j-1).."].i",i-1+j-1)
-			send("objects["..tostring(i-1+j-1).."].p",o[2])
-			send("objects["..tostring(i-1+j-1).."].b",o[3])
+			send("objects["..tostring(i-1+j-1).."].p",o.pos)
+			send("objects["..tostring(i-1+j-1).."].b",o.size)
 			send("objects["..tostring(i-1+j-1).."].color",c)
 			obj_amount = obj_amount + 1
 		end
@@ -83,8 +90,9 @@ end
 function render()
   send("cam_pos", cam_pos)
   send("cam_dir", cam_dir)
+  send("screen_res", {width, height})
   love.graphics.setShader(shader)
-	love.graphics.setColor(255,255,255,255)
+	love.graphics.setColor(1,1,1,1)
 	love.graphics.rectangle("fill",0,0,love.graphics.getWidth(),love.graphics.getHeight())
   love.graphics.setShader()
 end
