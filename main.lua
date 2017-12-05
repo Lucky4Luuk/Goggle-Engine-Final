@@ -4,6 +4,7 @@ require("distance_functions")
 require("renderer")
 require("filesystem")
 require("physics")
+require("utils")
 
 local debug = {FPS=true, CAMERA=true, ERROR=true}
 
@@ -31,6 +32,8 @@ local view_distance = 20.0
 local errors = {}
 
 local first_frame = true
+local TIMESTEP = 0
+local TIMESTEPLENGTH = 0.05
 
 function setSize(w, h)
 	width = w
@@ -76,6 +79,9 @@ function love.load()
 
 	--Reset camera direction in case it rotated.
 	resetCamera()
+
+	--Physics Stuff
+	updateAllObjects(objects)
 end
 
 function resetCamera()
@@ -131,24 +137,30 @@ function moveCamera(dt)
 	end
 end
 
+function FixedUpdate()
+	local bsres = getBSResponses()
+  local cres = getCollisionResponses(bsres)
+  applyPhysics(cres)
+end
+
 function love.update(dt)
 	iTime = iTime + dt
 	iTimeDelta = dt
+	TIMESTEP = TIMESTEP + dt
 
-	rotateCamera()
 	moveCamera(dt)
+	rotateCamera()
 	setCamera(cam_pos, cam_dir)
 	updateObjectsList(objects)
 	updateLightsList(lights)
+
+	while TIMESTEP > TIMESTEPLENGTH do
+		FixedUpdate()
+		TIMESTEP = TIMESTEP - TIMESTEPLENGTH
+	end
 end
 
 function love.draw()
-	--Set variables
-	send("iTime",{iTime,iTimeDelta})
-	send("iResolution",{love.graphics.getWidth(),love.graphics.getHeight()})
-	-- send("cam_dir",cam_dir)
-	-- send("cam_pos",cam_pos)
-
 	--Draw Stuff
 	love.graphics.setCanvas(canvas)
 	render()
@@ -158,7 +170,7 @@ function love.draw()
 	--FPS Counter
 	love.graphics.setShader()
 	love.graphics.setBlendMode("subtract")
-	love.graphics.setColor(255,255,255,255)
+	love.graphics.setColor(1,1,1,1)
 	local dy = 0
 	if debug.FPS then
 		love.graphics.print(string.format("FPS: %0.2f",love.timer.getFPS()), 0,dy)

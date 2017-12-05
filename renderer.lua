@@ -23,29 +23,26 @@ end
 function updateObjectsList(objects)
 	local obj_amount = 0
 
-	for i,ob in ipairs(objects) do
-		local models = ob[1]
-		for j, o in ipairs(models) do
-			local alpha = o.alpha
-			local t = 0
-			--local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
-      local c = {o.color[1]/255, o.color[2]/255, o.color[3]/255}
-			if o.t == "Plane" then
-				t = 1
-			elseif o.t == "Sphere" then
-				t = 2
-			elseif o.t == "uBox" then
-				t = 3
-			elseif o.t == "Box" then
-				t = 4
-			end
-			send("objects["..tostring(i-1+j-1).."].Type",t)
-			send("objects["..tostring(i-1+j-1).."].i",i-1+j-1)
-			send("objects["..tostring(i-1+j-1).."].p",o.pos)
-			send("objects["..tostring(i-1+j-1).."].b",o.size)
-			send("objects["..tostring(i-1+j-1).."].color",c)
-			obj_amount = obj_amount + 1
+	for i, o in ipairs(objects) do
+		local alpha = o.alpha
+		local t = 0
+		--local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
+    local c = {o.color[1]/255, o.color[2]/255, o.color[3]/255}
+		if o.t == "Plane" then
+			t = 1
+		elseif o.t == "Sphere" then
+			t = 2
+		elseif o.t == "uBox" then
+			t = 3
+		elseif o.t == "Box" then
+			t = 4
 		end
+		send("objects["..tostring(obj_amount).."].Type",t)
+		send("objects["..tostring(obj_amount).."].i",obj_amount)
+		send("objects["..tostring(obj_amount).."].p",o.pos)
+		send("objects["..tostring(obj_amount).."].b",o.size)
+		send("objects["..tostring(obj_amount).."].color",c)
+		obj_amount = obj_amount + 1
 	end
 
 	send("object_amount",obj_amount)
@@ -88,6 +85,8 @@ function send(name, value)
 end
 
 function render()
+  --Set variables
+	send("iTime",{iTime,iTimeDelta})
   send("cam_pos", cam_pos)
   send("cam_dir", cam_dir)
   send("screen_res", {width, height})
