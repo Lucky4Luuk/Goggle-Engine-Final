@@ -26,6 +26,11 @@ local scale = {width / love.graphics.getWidth(), height / love.graphics.getHeigh
 local objects = {}
 local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}},{"Point",{-3,2,0},{3,0,0},{0,0,255}}}
 
+local tex_atlas = nil
+local bump_atlas = nil
+local tex_atlas_data = 0
+local bump_atlas_data = 0
+
 local fog_density = 0.1
 local view_distance = 20.0
 
@@ -57,6 +62,17 @@ function handleError(status)
 	end
 end
 
+function createAtlases()
+	tex_atlas = {}
+	bump_atlas = {}
+	for i=1, #tex_atlas_data do
+		table.insert(tex_atlas, love.graphics.newImage(tex_atlas_data[i]))
+	end
+	for i=1, #bump_atlas_data do
+		table.insert(bump_atlas, love.graphics.newImage(bump_atlas_data[i]))
+	end
+end
+
 function love.load()
 	--Create canvas for scaling
 	setSize(width, height)
@@ -69,6 +85,12 @@ function love.load()
 	loadModel("floor.dmod")
 	loadModel("test.dmod")
 
+	--Generate Texture Atlas
+	tex_atlas_data, bump_atlas_data = generateTextureAtlas(objects)
+	createAtlases()
+
+	updateAtlas(tex_atlas[1], bump_atlas[1])
+
 	--Send data to shader
 	updateObjectsList(objects)
 	send("fog_density",fog_density)
@@ -79,9 +101,6 @@ function love.load()
 
 	--Reset camera direction in case it rotated.
 	resetCamera()
-
-	--Physics Stuff
-	updateAllObjects(objects)
 end
 
 function resetCamera()
@@ -138,9 +157,9 @@ function moveCamera(dt)
 end
 
 function FixedUpdate()
-	local bsres = getBSResponses()
-  local cres = getCollisionResponses(bsres)
-  applyPhysics(cres)
+	local bsres = getBSResponses(objects)
+  local cres = getCollisionResponses(bsres, objects)
+  applyPhysics(cres, objects)
 end
 
 function love.update(dt)
@@ -175,6 +194,8 @@ function love.draw()
 	if debug.FPS then
 		love.graphics.print(string.format("FPS: %0.2f",love.timer.getFPS()), 0,dy)
 		dy = dy + 20
+		love.graphics.print(string.format("MS: %0.2f",love.timer.getDelta()*100), 0,dy)
+		dy = dy + 20
 	end
 	if debug.CAMERA then
 		love.graphics.print("CAM_POS: ("..tostring(cam_pos[1]).."; "..tostring(cam_pos[2]).."; "..tostring(cam_pos[3])..")",0,dy)
@@ -208,11 +229,19 @@ function love.keypressed(k)
 			-- love.window.setFullscreen(true)
 		end
 		setSize(width, height)
+		updateAtlas(tex_atlas[1], bump_atlas[1])
 		updateObjectsList(objects)
+		updateLightsList(lights)
+		send("fog_density",fog_density)
+		send("view_distance",view_distance)
 	end
 end
 
 function love.resize(w, h)
 	setSize(width, height)
+	updateAtlas(tex_atlas[1], bump_atlas[1])
 	updateObjectsList(objects)
+	updateLightsList(lights)
+	send("fog_density",fog_density)
+	send("view_distance",view_distance)
 end

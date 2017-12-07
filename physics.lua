@@ -1,30 +1,17 @@
 require("distance_functions")
 
-local objects = {}
-
 local PRECIS = 0.01
 
 function __SETPRECIS(f)
   PRECIS = f
 end
 
-function updateAllObjects(o)
-  -- objects = o
-  objects = {}
-  for i=1, #o do
-    table.insert(objects, o[i])
-  end
-end
-
-function updateObject(o, index)
+function updateObject(o, index, objects)
   objects[index] = o
 end
 
-function getObjects()
-  return objects
-end
 
-function getCollisionResponses(bsres) --BSRES is a table of bounding sphere responses, gotten with getBSResponses
+function getCollisionResponses(bsres, objects) --BSRES is a table of bounding sphere responses, gotten with getBSResponses
   local cres = {}
   if #bsres > 0 then
     for i=1, #bsres do
@@ -73,7 +60,7 @@ function getCollisionResponses(bsres) --BSRES is a table of bounding sphere resp
   return cres
 end
 
-function getBSResponses()
+function getBSResponses(objects)
   local bsres = {}
   for i=1, #objects do
     for j=1, #objects do
@@ -146,7 +133,7 @@ function getBSResponses()
   return bsres
 end
 
-function resolveCollision(data)
+function resolveCollision(data, objects)
   local A = objects[data[1]]
   local B = objects[data[2]]
   local rv = vec_minus(B.vel, A.vel)
@@ -188,10 +175,10 @@ function resolveCollision(data)
   objects[data[2]].vel = vec_add(objects[data[2]].vel, v_mul_f(impulse, ratio))
 end
 
-function applyPhysics(cres)
+function applyPhysics(cres, objects)
   if #cres > 0 then
     for i=1, #cres do
-      resolveCollision(cres[i])
+      resolveCollision(cres[i], objects)
     end
   end
 end

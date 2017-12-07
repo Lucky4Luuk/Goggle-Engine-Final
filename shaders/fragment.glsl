@@ -1,5 +1,9 @@
-#define AA 1
+#define AA 2
 #define GI 0
+
+#define BUMP_FACTOR 0.015
+
+#define PI 3.14159265359
 
 int GI_maxDistance = 20;
 int GI_maxBounces = 4;
@@ -9,6 +13,8 @@ uniform vec3 cam_pos;
 uniform vec3 cam_dir;
 uniform int object_amount;
 uniform int light_amount;
+uniform sampler2D tex_atlas;
+uniform sampler2D bump_atlas;
 uniform struct Object
 {
 	int Type;
@@ -16,7 +22,14 @@ uniform struct Object
 	vec3 p; //Vector 3: position
 	vec3 b; //Vector 3: size (if sphere, only x is used)
 	vec3 color;
+	bool isTextured;
+	bool hasBumpMap;
+	vec3 tex_offset;
+	vec3 bump_offset;
+	vec2 texsize;
+	vec2 texrepeat;
 	float alpha;
+	float ref;
 } objects[30];
 uniform struct Light
 {
@@ -92,6 +105,36 @@ float sdBox(vec3 p, vec3 b)
 	return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
 }
 
+vec4 getTexel(sampler2D tex, vec2 uv, vec3 offset, vec2 ts)
+{
+	vec2 size = vec2(8192.0);
+	vec2 global_uv = offset.xy / size;
+	vec2 local_uv = (uv * ts) / size;
+	return Texel(tex, global_uv + local_uv);
+}
+
+vec3 cubeTex(vec3 p, vec3 n, sampler2D tex, vec2 tr, vec3 offset, vec2 ts)
+{
+	return getTexel( tex, mod(p.yz, tr), offset, ts ).rgb*abs(n.x)+
+				 getTexel( tex, mod(p.xz, tr), offset, ts ).rgb*abs(n.y)+
+				 getTexel( tex, mod(p.xy, tr), offset, ts ).rgb*abs(n.z);
+}
+
+float sdBoxBump(vec3 samplePos, vec3 boxPos, vec3 boxDim, sampler2D bumptex, vec2 tr, vec3 offset, vec2 ts)
+{
+	vec3 normal;
+	float bump = 0.0;
+	if(length(samplePos-boxPos) < length(boxDim))
+	{
+		normal = normalize(samplePos-boxPos);
+		vec3 bumpcol = cubeTex(samplePos*0.1, normal, bumptex, tr, offset, ts);
+		bump = bumpcol.g*BUMP_FACTOR;
+	}
+	vec3 d = abs(samplePos-boxPos) - boxDim;
+	return min(max(d.x,max(d.y,d.z)),0.0) +
+		length(max(d,0.0))+bump;
+}
+
 float fmod(float a, float b)
 {
     if(a<0.0)
@@ -101,25 +144,28 @@ float fmod(float a, float b)
     return mod(a, b);
 }
 
+vec3 get_texture(vec3 p, vec3 n, int t, vec2 ts, vec2 tr, sampler2D tex, vec3 offset)
+{
+	if (t == 1)
+	{
+		vec2 uv = mod(p.xz, tr);
+		if (uv.x > 0 && uv.y > 0 && uv.x < tr.x && uv.y < tr.y) return getTexel(tex, uv, offset, ts).rgb;
+	} else if (t == 2)
+	{
+		// float u = asin(n.x)/PI + 0.5;
+		// float v = asin(n.y)/PI + 0.5;
+		float u = n.x/2 + 0.5;
+		float v = n.y/2 + 0.5;
+		return getTexel(tex, vec2(u, v), offset, ts).rgb;
+	} else if (t == 4)
+	{
+		return cubeTex(p, n, tex_atlas, tr, offset, ts);
+	}
+	return vec3(1.0);
+}
+
 RESULT map(vec3 pos)
 {
-	//vec3 cp = vec3(0.0,0.0,0.0);
-
-    //vec2 res = opU(vec2(sdPlane(pos - vec3(0.0,0.0,0.0) + cp),1.0),
-    //               vec2(sdSphere(pos - vec3(0.0,0.5,0.0) + cp,0.5),46.9));
-
-    //float b = opBlend(udBox(pos - vec3(1.0,0.5,0.0) + cp,vec3(0.5,0.5,0.5)),
-    //                  sdSphere(pos - vec3(1.0,0.5,0.0) + cp,0.5),(sin(iTime.x)+1.0)/2.0);
-    //res = opU(res, vec2(b,78.5));
-
-    //b = opI(udBox(pos - vec3(-1.0,0.5 * (sin(iTime.x)+1.0)/2.0,0.0) + cp,vec3(0.5,0.5,0.5)),
-    //        sdSphere(pos - vec3(-1.0,0.5,0.0) + cp,0.5));
-    //res = opU(res, vec2(b,129.8));
-
-    //b = opS(sdSphere(pos - vec3(-1.0,0.5,-1.0) + cp,0.5),
-    //        udBox(pos - vec3(-1.0,0.5 * (sin(iTime.x))/1.0,-1.0) + cp,vec3(0.5,0.5,0.5)));
-    //res = opU(res, vec2(b,22.4));
-
 	vec4 res = vec4(-1.0);
 	int id = 0;
 	float closest;
@@ -143,7 +189,15 @@ RESULT map(vec3 pos)
 			closest = q;
 		} else if (objects[0].Type == 4)
 		{
-			float q = sdBox(pos - objects[0].p,objects[0].b);
+			float q = 0.0;
+			if (objects[0].hasBumpMap)
+			{
+				//float sdBoxBump(vec3 samplePos, vec3 boxPos, vec3 boxDim, sampler2D bumptex, vec2 tr, vec3 offset, vec2 ts)
+				q = sdBoxBump(pos, objects[0].p, objects[0].b, bump_atlas, objects[0].texrepeat, objects[0].bump_offset, objects[0].texsize);
+				// q = sdBox(pos - objects[0].p,objects[0].b);
+			} else {
+				q = sdBox(pos - objects[0].p,objects[0].b);
+			}
 			res = vec4(q,objects[0].color);
 			closest = q;
 		}
@@ -159,7 +213,7 @@ RESULT map(vec3 pos)
 				if (q < closest)
 				{
 					closest = q;
-					id = objects[o].i;
+					id = o;
 				}
 			} else if (objects[o].Type == 2)
 			{
@@ -168,7 +222,7 @@ RESULT map(vec3 pos)
 				if (q < closest)
 				{
 					closest = q;
-					id = objects[o].i;
+					id = o;
 				}
 			} else if (objects[o].Type == 3)
 			{
@@ -177,24 +231,32 @@ RESULT map(vec3 pos)
 				if (q < closest)
 				{
 					closest = q;
-					id = objects[o].i;
+					id = o;
 				}
 			} else if (objects[o].Type == 4)
 			{
-				float q = sdBox(pos - objects[o].p,objects[o].b);
+				float q = 0.0;
+				if (objects[o].hasBumpMap)
+				{
+					q = sdBoxBump(pos, objects[o].p, objects[o].b, bump_atlas, objects[o].texrepeat, objects[o].bump_offset, objects[o].texsize);
+					// q = sdBox(pos - objects[o].p,objects[o].b);
+				} else {
+					q = sdBox(pos - objects[o].p,objects[o].b);
+				}
 				res = opU(res,vec4(q,objects[o].color));
 				if (q < closest)
 				{
 					closest = q;
-					id = objects[o].i;
+					id = o;
 				}
 			}
 		}
 	}
-    RESULT r;
-		r.re = res;
-		r.i = id;
-    return r;
+
+  RESULT r;
+	r.re = res;
+	r.i = id;
+  return r;
 }
 
 RESULT castRay(vec3 pos, vec3 dir)
@@ -291,14 +353,6 @@ vec3 calcNormal( in vec3 pos )
 					  e.yyx*map( pos + e.yyx ).re.x +
 					  e.yxy*map( pos + e.yxy ).re.x +
 					  e.xxx*map( pos + e.xxx ).re.x );
-    /*
-	vec3 eps = vec3( 0.0005, 0.0, 0.0 );
-	vec3 nor = vec3(
-	    map(pos+eps.xyy).x - map(pos-eps.xyy).x,
-	    map(pos+eps.yxy).x - map(pos-eps.yxy).x,
-	    map(pos+eps.yyx).x - map(pos-eps.yyx).x );
-	return normalize(nor);
-	*/
 }
 
 float calcAO( in vec3 pos, in vec3 nor )
@@ -357,10 +411,12 @@ vec3 render( in vec3 ro, in vec3 rd )
 	{
 		vec3 pos = ro + t*rd;
 		vec3 nor = calcNormal( pos );
-		vec3 ref = reflect( rd, nor );
+		vec3 ref = reflect( rd, nor ) * objects[id].ref;
 
 		// material
 		col = m;
+		//vec3 get_texture(vec3 p, vec3 n, int t, vec2 ts, vec2 tr, sampler2D tex, vec3 offset)
+		if (objects[id].isTextured) col *= get_texture(pos - objects[id].p, nor, objects[id].Type, objects[id].texsize, objects[id].texrepeat, tex_atlas, objects[id].tex_offset);
 		if (m.x == -2.0)
 		{
 			if (m.y == -2.0)

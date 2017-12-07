@@ -20,6 +20,11 @@ function setRenderSize(w, h)
   return true
 end
 
+function updateAtlas(tex_atlas, bump_atlas)
+  send("tex_atlas", tex_atlas)
+  send("bump_atlas", bump_atlas)
+end
+
 function updateObjectsList(objects)
 	local obj_amount = 0
 
@@ -37,11 +42,26 @@ function updateObjectsList(objects)
 		elseif o.t == "Box" then
 			t = 4
 		end
+    if o.tex then
+      send("objects["..tostring(obj_amount).."].isTextured", true)
+      send("objects["..tostring(obj_amount).."].texsize", o.texsize)
+      send("objects["..tostring(obj_amount).."].texrepeat", o.texrepeat)
+      send("objects["..tostring(obj_amount).."].tex_offset", o.tex_offset)
+    else
+      send("objects["..tostring(obj_amount).."].isTextured", false)
+    end
+    if o.bumptex then
+      send("objects["..tostring(obj_amount).."].hasBumpMap", true)
+      send("objects["..tostring(obj_amount).."].bump_offset", o.bump_offset)
+    else
+      send("objects["..tostring(obj_amount).."].hasBumpMap", false)
+    end
 		send("objects["..tostring(obj_amount).."].Type",t)
 		send("objects["..tostring(obj_amount).."].i",obj_amount)
 		send("objects["..tostring(obj_amount).."].p",o.pos)
 		send("objects["..tostring(obj_amount).."].b",o.size)
 		send("objects["..tostring(obj_amount).."].color",c)
+    send("objects["..tostring(obj_amount).."].ref",o.ref)
 		obj_amount = obj_amount + 1
 	end
 
