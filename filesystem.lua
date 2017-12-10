@@ -4,9 +4,11 @@ function FS_loadModel(filename)
 	for line in f:lines() do
 		local object = loadstring("return "..line)()
     for i=1, #object[1] do
+      object[1][i].tex_col = {1,1,1}
       if object[1][i].tex then
         local texloc = object[1][i].tex
         object[1][i].tex = love.graphics.newImage("assets/"..texloc)
+        object[1][i].tex_col = getAvgTexCol(object[1][i].tex)
         object[1][i].texname = texloc
         object[1][i].texsize = {object[1][i].tex:getWidth(), object[1][i].tex:getHeight()}
       end

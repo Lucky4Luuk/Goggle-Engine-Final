@@ -16,7 +16,7 @@ local iTime = 0
 local iTimeDelta = 0
 -- local canvas = nil
 local cam_dir = {1,0,0}
-local cam_pos = {3,1,0}
+local cam_pos = {0,1,0}
 local default_cam_dir = cam_dir
 -- local shader = nil
 local sensitivityX = 0.5
@@ -24,7 +24,8 @@ local sensitivityY = 0.5
 local scale = {width / love.graphics.getWidth(), height / love.graphics.getHeight()}
 
 local objects = {}
-local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}},{"Point",{-3,2,0},{3,0,0},{0,0,255}}}
+local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}}}
+--,{"Point",{-3,2,0},{3,0,0},{0,0,255}}
 
 local tex_atlas = nil
 local bump_atlas = nil
@@ -83,7 +84,7 @@ function love.load()
 
 	--Load testing data
 	loadModel("floor.dmod")
-	loadModel("test.dmod")
+	loadModel("box.dmod")
 
 	--Generate Texture Atlas
 	tex_atlas_data, bump_atlas_data = generateTextureAtlas(objects)
@@ -194,7 +195,7 @@ function love.draw()
 	if debug.FPS then
 		love.graphics.print(string.format("FPS: %0.2f",love.timer.getFPS()), 0,dy)
 		dy = dy + 20
-		love.graphics.print(string.format("MS: %0.2f",love.timer.getDelta()*100), 0,dy)
+		love.graphics.print(string.format("MS: %0.2f",love.timer.getDelta()*1000), 0,dy)
 		dy = dy + 20
 	end
 	if debug.CAMERA then

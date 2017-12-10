@@ -42,6 +42,9 @@ function updateObjectsList(objects)
 		elseif o.t == "Box" then
 			t = 4
 		end
+    send("objects["..tostring(obj_amount).."].avg_tex_col", o.tex_col)
+    send("objects["..tostring(obj_amount).."].roughness", o.roughness)
+    send("objects["..tostring(obj_amount).."].metallic", o.metallic)
     if o.tex then
       send("objects["..tostring(obj_amount).."].isTextured", true)
       send("objects["..tostring(obj_amount).."].texsize", o.texsize)

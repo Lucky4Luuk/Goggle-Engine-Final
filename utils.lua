@@ -29,3 +29,15 @@ function lines_from(file)
 end
 
 function isNaN( v ) return type( v ) == "number" and v ~= v end
+
+function getAvgTexCol(tex)
+  local c = love.graphics.newCanvas(1,1)
+  love.graphics.setCanvas(c)
+  love.graphics.push()
+  love.graphics.scale(1/tex:getWidth(), 1/tex:getHeight())
+  love.graphics.draw(tex)
+  love.graphics.pop()
+  love.graphics.setCanvas()
+  local r, g, b, a = c:newImageData():getPixel(0,0)
+  return {r, g, b}
+end

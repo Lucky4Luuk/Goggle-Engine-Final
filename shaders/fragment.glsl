@@ -1,8 +1,11 @@
-#define AA 2
-#define GI 0
+#define AA 1
+#define GI 1
 
 #define BUMP_FACTOR 0.015
 
+#define STEP_SIZE 1
+
+#define saturate(x) clamp(x, 0.0, 1.0)
 #define PI 3.14159265359
 
 int GI_maxDistance = 20;
@@ -28,8 +31,11 @@ uniform struct Object
 	vec3 bump_offset;
 	vec2 texsize;
 	vec2 texrepeat;
+	vec3 avg_tex_col;
 	float alpha;
 	float ref;
+	float roughness;
+	float metallic;
 } objects[30];
 uniform struct Light
 {
@@ -135,13 +141,49 @@ float sdBoxBump(vec3 samplePos, vec3 boxPos, vec3 boxDim, sampler2D bumptex, vec
 		length(max(d,0.0))+bump;
 }
 
+// http://research.microsoft.com/en-us/um/people/hoppe/ravg.pdf
+float det( vec2 a, vec2 b ) { return a.x*b.y-b.x*a.y; }
+vec3 getClosest( vec2 b0, vec2 b1, vec2 b2 )
+{
+    float a =     det(b0,b2);
+    float b = 2.0*det(b1,b0);
+    float d = 2.0*det(b2,b1);
+    float f = b*d - a*a;
+    vec2  d21 = b2-b1;
+    vec2  d10 = b1-b0;
+    vec2  d20 = b2-b0;
+    vec2  gf = 2.0*(b*d21+d*d10+a*d20); gf = vec2(gf.y,-gf.x);
+    vec2  pp = -f*gf/dot(gf,gf);
+    vec2  d0p = b0-pp;
+    float ap = det(d0p,d20);
+    float bp = 2.0*det(d10,d0p);
+    float t = clamp( (ap+bp)/(2.0*a+b+d), 0.0 ,1.0 );
+    return vec3( mix(mix(b0,b1,t), mix(b1,b2,t),t), t );
+}
+
+vec4 sdBezier( vec3 a, vec3 b, vec3 c, vec3 p )
+{
+	vec3 w = normalize( cross( c-b, a-b ) );
+	vec3 u = normalize( c-b );
+	vec3 v = normalize( cross( w, u ) );
+
+	vec2 a2 = vec2( dot(a-b,u), dot(a-b,v) );
+	vec2 b2 = vec2( 0.0 );
+	vec2 c2 = vec2( dot(c-b,u), dot(c-b,v) );
+	vec3 p3 = vec3( dot(p-b,u), dot(p-b,v), dot(p-b,w) );
+
+	vec3 cp = getClosest( a2-p3.xy, b2-p3.xy, c2-p3.xy );
+
+	return vec4( sqrt(dot(cp.xy,cp.xy)+p3.z*p3.z), cp.z, length(cp.xy), p3.z );
+}
+
 float fmod(float a, float b)
 {
-    if(a<0.0)
-    {
-        return b - mod(abs(a), b);
-    }
-    return mod(a, b);
+  if(a<0.0)
+  {
+      return b - mod(abs(a), b);
+  }
+  return mod(a, b);
 }
 
 vec3 get_texture(vec3 p, vec3 n, int t, vec2 ts, vec2 tr, sampler2D tex, vec3 offset)
@@ -278,7 +320,7 @@ RESULT castRay(vec3 pos, vec3 dir)
 				vec4 res = r.re;
 				id = r.i;
         if (res.x<precis || t>tmax) break;
-        t += res.x;
+        t += res.x*STEP_SIZE;
         m = res.yzw;
     }
 
@@ -335,15 +377,15 @@ L_RESULT castLightRay(vec3 pos, vec3 dir, vec3 light_color, int cur_id)
 float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
 {
 	float res = 1.0;
-    float t = mint;
-    for( int i=0; i<16; i++ )
-    {
-		float h = map( ro + rd*t ).re.x;
-        res = min( res, 8.0*h/t );
-        t += clamp( h, 0.02, 0.10 );
-        if( h<0.001 || t>tmax ) break;
-    }
-    return clamp( res, 0.0, 1.0 );
+  float t = mint;
+  for( int i=0; i<16; i++ )
+  {
+		float h = map( ro + rd*t ).re.x*STEP_SIZE;
+    res = min( res, 8.0*h/t );
+    t += clamp( h, 0.02, 0.10 );
+    if( h<0.001 || t>tmax ) break;
+  }
+  return clamp( res, 0.0, 1.0 );
 }
 
 vec3 calcNormal( in vec3 pos )
@@ -355,6 +397,24 @@ vec3 calcNormal( in vec3 pos )
 					  e.xxx*map( pos + e.xxx ).re.x );
 }
 
+vec3 calcGI( in vec3 pos, in vec3 nor )
+{
+	//float occ = 0.0;
+	vec3 col = vec3(0.0);
+  float sca = 1.0;
+  for( int i=0; i<50; i++ )
+  {
+      float hr = 0.01 + 0.12*float(i)/5.0;
+      vec3 aopos =  nor * hr + pos;
+			vec4 res = map( aopos ).re;
+      float dd = res.x*STEP_SIZE;
+      //occ += -(dd-hr)*sca;
+			col += -(dd-hr)*sca*res.yzw;
+      sca *= 0.95;
+  }
+  return clamp( 1.0 - 3.0*col, 0.0, 1.0 );
+}
+
 float calcAO( in vec3 pos, in vec3 nor )
 {
 	float occ = 0.0;
@@ -363,9 +423,9 @@ float calcAO( in vec3 pos, in vec3 nor )
   {
       float hr = 0.01 + 0.12*float(i)/50.0;
       vec3 aopos =  nor * hr + pos;
-      float dd = map( aopos ).re.x;
+      float dd = map( aopos ).re.x*STEP_SIZE;
       occ += -(dd-hr)*sca;
-      sca *= 0.95;
+      sca *= 0.9;
   }
   return clamp( 1.0 - 3.0*occ, 0.0, 1.0 );
 }
@@ -379,6 +439,21 @@ vec3 calcFog(vec3 pos, vec3 rd)
 	//vec3 col = sky_color*d;
 	return col;
 }
+
+// float calcSSS( in vec3 pos, in vec3 nor )
+// {
+//   vec4 kk;
+// 	float occ = 0.0;
+//   for( int i=0; i<8; i++ )
+//   {
+//       float h = 0.002 + 0.11*float(i)/7.0;
+//       vec3 dir = normalize( sin( float(i)*13.0 + vec3(0.0,2.1,4.2) ) );
+//       dir *= sign(dot(dir,nor));
+//       occ += (h-mapOpaque(pos-h*dir, kk).x);
+//   }
+//   occ = clamp( 1.0 - 11.0*occ/8.0, 0.0, 1.0 );
+//   return occ*occ;
+// }
 
 GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
 {
@@ -396,6 +471,173 @@ GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
 	return gre;
 }
 
+vec3 getLighting(vec3 pos, vec3 col, vec3 nor, int type, vec3 lip, vec3 lig, float range) //If type == 1 then range isn't used.
+{
+	if (type == 1) {
+		float i = dot(lig, nor);
+		i = clamp(i, 0.0, 1.0);
+		return col * i;
+	}
+	return vec3(0.0);
+}
+
+//------------------------------------------------------------------------------
+// BRDF
+//------------------------------------------------------------------------------
+
+float pow5(float x) {
+    float x2 = x * x;
+    return x2 * x2 * x;
+}
+
+float D_GGX(float linearRoughness, float NoH, const vec3 h) {
+    // Walter et al. 2007, "Microfacet Models for Refraction through Rough Surfaces"
+    float oneMinusNoHSquared = 1.0 - NoH * NoH;
+    float a = NoH * linearRoughness;
+    float k = linearRoughness / (oneMinusNoHSquared + a * a);
+    float d = k * k * (1.0 / PI);
+    return d;
+}
+
+float V_SmithGGXCorrelated(float linearRoughness, float NoV, float NoL) {
+    // Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet-Based BRDFs"
+    float a2 = linearRoughness * linearRoughness;
+    float GGXV = NoL * sqrt((NoV - a2 * NoV) * NoV + a2);
+    float GGXL = NoV * sqrt((NoL - a2 * NoL) * NoL + a2);
+    return 0.5 / (GGXV + GGXL);
+}
+
+vec3 F_Schlick(const vec3 f0, float VoH) {
+    // Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"
+    return f0 + (vec3(1.0) - f0) * pow5(1.0 - VoH);
+}
+
+float F_Schlick(float f0, float f90, float VoH) {
+    return f0 + (f90 - f0) * pow5(1.0 - VoH);
+}
+
+float Fd_Burley(float linearRoughness, float NoV, float NoL, float LoH) {
+    // Burley 2012, "Physically-Based Shading at Disney"
+    float f90 = 0.5 + 2.0 * linearRoughness * LoH * LoH;
+    float lightScatter = F_Schlick(1.0, f90, NoL);
+    float viewScatter  = F_Schlick(1.0, f90, NoV);
+    return lightScatter * viewScatter * (1.0 / PI);
+}
+
+float Fd_Lambert() {
+    return 1.0 / PI;
+}
+
+//------------------------------------------------------------------------------
+// Indirect lighting
+//------------------------------------------------------------------------------
+
+vec3 Irradiance_SphericalHarmonics(const vec3 n) {
+    // Irradiance from "Ditch River" IBL (http://www.hdrlabs.com/sibl/archive.html)
+    return max(
+          vec3( 0.754554516862612,  0.748542953903366,  0.790921515418539)
+        + vec3(-0.083856548007422,  0.092533500963210,  0.322764661032516) * (n.y)
+        + vec3( 0.308152705331738,  0.366796330467391,  0.466698181299906) * (n.z)
+        + vec3(-0.188884931542396, -0.277402551592231, -0.377844212327557) * (n.x)
+        , 0.0);
+}
+
+vec2 PrefilteredDFG_Karis(float roughness, float NoV) {
+    // Karis 2014, "Physically Based Material on Mobile"
+    const vec4 c0 = vec4(-1.0, -0.0275, -0.572,  0.022);
+    const vec4 c1 = vec4( 1.0,  0.0425,  1.040, -0.040);
+
+    vec4 r = roughness * c0 + c1;
+    float a004 = min(r.x * r.x, exp2(-9.28 * NoV)) * r.x + r.y;
+
+    return vec2(-1.04, 1.04) * a004 + r.zw;
+}
+
+float shadow(in vec3 origin, in vec3 direction) {
+  float hit = 1.0;
+  float t = 0.02;
+
+  for (int i = 0; i < 1000; i++) {
+      float h = map(origin + direction * t).re.x;
+      if (h < 0.001) return 0.0;
+      t += h;
+      hit = min(hit, 10.0 * h / t);
+      if (t >= 2.5) break;
+  }
+
+  return clamp(hit, 0.0, 1.0);
+}
+
+// float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
+// {
+// 	float res = 1.0;
+//   float t = mint;
+//   for( int i=0; i<16; i++ )
+//   {
+// 		float h = map( ro + rd*t ).re.x*STEP_SIZE;
+//     res = min( res, 8.0*h/t );
+//     t += clamp( h, 0.02, 0.10 );
+//     if( h<0.001 || t>tmax ) break;
+//   }
+//   return clamp( res, 0.0, 1.0 );
+// }
+
+vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 baseColor, float roughness, float metallic) //n is normal, l is lighting direction
+{
+	vec3 color = vec3(0.0);
+
+	vec3 v = normalize(-rd);
+	vec3 h = normalize(v + l);
+	vec3 r = normalize(reflect(rd, n));
+
+	float NoV = abs(dot(n, v)) + 1e-5;
+	float NoL = saturate(dot(n, l));
+	float NoH = saturate(dot(n, h));
+	float LoH = saturate(dot(l, h));
+
+	float intensity = 2.5; //Default: 2.0
+	float indirectIntensity = 0.64; //Default: 0.64
+
+	float linearRoughness = roughness * roughness;
+	vec3 diffuseColor = (1.0 - metallic) * baseColor.rgb;
+	vec3 f0 = 0.04 * (1.0 - metallic) + baseColor.rgb * metallic;
+
+	float attenuation = softshadow(pos, l, 0.02, 2.5);
+
+	indirectIntensity *= attenuation;
+
+	//Specular BRDF
+	float D = D_GGX(linearRoughness, NoH, h);
+	float V = V_SmithGGXCorrelated(linearRoughness, NoV, NoL);
+	vec3 F = F_Schlick(f0, LoH);
+	vec3 Fr = (D * V) * F;
+
+	//Diffuse BRDF
+	vec3 Fd = diffuseColor * Fd_Burley(linearRoughness, NoV, NoL, LoH);
+
+	color = Fd + Fr;
+	color *= (intensity * attenuation * NoL) + vec3(0.98, 0.92, 0.89);
+
+	//Diffuse Indirect
+	vec3 indirectDiffuse = Irradiance_SphericalHarmonics(n) * Fd_Lambert();
+
+	RESULT indirectHit = castRay(pos, r);
+	vec3 tex_col = objects[indirectHit.i].avg_tex_col;
+	vec3 indirectSpecular = indirectHit.re.yzw * tex_col;
+	if (indirectHit.re.yzw == vec3(-15.0)) {
+		indirectSpecular = vec3(0.7, 0.9, 1.0) + rd.y*0.8;
+	}
+
+	//Indirect Contribution
+	vec2 dfg = PrefilteredDFG_Karis(roughness, NoV);
+	vec3 specularColor = f0 * dfg.x + dfg.y;
+	vec3 ibl = diffuseColor * indirectDiffuse + indirectSpecular * specularColor;
+
+	color += ibl * indirectIntensity;
+
+	return color;
+}
+
 vec3 render( in vec3 ro, in vec3 rd )
 {
 	vec3 col = vec3(0.7, 0.9, 1.0) + rd.y*0.8;
@@ -411,7 +653,7 @@ vec3 render( in vec3 ro, in vec3 rd )
 	{
 		vec3 pos = ro + t*rd;
 		vec3 nor = calcNormal( pos );
-		vec3 ref = reflect( rd, nor ) * objects[id].ref;
+		vec3 ref = reflect( rd, nor );
 
 		// material
 		col = m;
@@ -430,53 +672,26 @@ vec3 render( in vec3 ro, in vec3 rd )
 		}
 
 		// lighting
+		vec3 L = vec3(0.0); //For GI
 		float occ = calcAO( pos, nor );
 		for (int i=0; i<1024; i++)
 		{
 			if (i>light_amount) break;
 			if (GI>0) {
-				if (lights[i].Type == 1) {
-					//Direct lighting
+				//GI is 1, so prepare yourself for a lot of pain.
+				//Goodbye life
+				if (lights[i].Type == 1) { //Directional Light
 					vec3 lig = normalize(lights[i].d);
-					float dif = clamp( dot( nor, lig ), 0.0, 1.0 );
-					float bac = clamp( dot( nor, normalize(vec3(-lig.x,0.0,-lig.z))), 0.0, 1.0 )*clamp( 1.0-pos.y,0.0,1.0);
-					float dom = smoothstep( -0.1, 0.1, ref.y );
-					float fre = pow( clamp(1.0+dot(nor,rd),0.0,1.0), 2.0 );
-					float spe = pow(clamp( dot( ref, lig ), 0.0, 1.0 ),16.0);
-					// float amb = clamp( 0.5+0.5*nor.y, 0.0, 1.0 );
-
-					dif *= softshadow( pos, lig, 0.02, 2.5 );
-					dom *= softshadow( pos, ref, 0.02, 2.5 );
-
-					vec3 lin = vec3(0.0);
-					lin += 1.30*dif*lights[i].color;
-					lin += 2.00*spe*lights[i].color*dif;
-					// lin += 0.40*amb*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-					lin += 0.50*dom*vec3(0.40,0.60,1.00)*occ*lights[i].color;
-					lin += 0.50*bac*vec3(0.25,0.25,0.25)*occ*lights[i].color;
-					lin += 0.25*fre*vec3(1.00,1.00,1.00)*occ*lights[i].color;
-
-					//Indirect lighting
-					// vec3 GI_Color = vec3(0.0);
-					//
-					// vec3 p = pos;
-					// vec3 d = rd;
-					// int gi_id = id;
-					//
-					// for (int depth=0; depth<16; depth++) {
-					// 	if (depth>GI_maxBounces) break;
-					// 	GI_TRACE gre = GI_TracePath(p, d, gi_id);
-					// 	p = gre.pos;
-					// 	d = gre.dir;
-					// 	gi_id = gre.id;
-					//
-					// 	GI_Color += gre.m.rgb * gre.m.w;
+					c = BRDF(pos, nor, rd, lig, col, objects[id].roughness, objects[id].metallic) * occ;
+					// if (softshadow(pos, lig, 0.02, 2.5) > 0.1) {
+					// 	c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0);
 					// }
-
-					// c = c + col*lin + GI_Color;
-
-					vec3 GI_Color = vec3(0.0);
-
+				} else if (lights[i].Type == 2) { //Point Light
+					vec3 lig = lights[i].p - pos;
+					c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0) * occ;
+					// if (softshadow(pos, lig, 0.02, 2.5) > 0.1) {
+					// 	c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0);
+					// }
 				}
 			} else {
 				if (lights[i].Type == 1) { //Directional Light
