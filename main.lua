@@ -6,7 +6,7 @@ require("filesystem")
 require("physics")
 require("utils")
 
-local debug = {FPS=true, CAMERA=true, ERROR=true}
+local debug = {FPS=false, CAMERA=false, ERROR=false}
 
 local width = 768
 local height = 432
@@ -15,17 +15,18 @@ local min_height = height
 local iTime = 0
 local iTimeDelta = 0
 -- local canvas = nil
-local cam_dir = {1,0,0}
-local cam_pos = {0,1,0}
+local cam_dir = {-1,0, 1}
+local cam_pos = {1,0.5,-1}
 local default_cam_dir = cam_dir
+local default_cam_pos = cam_pos
 -- local shader = nil
 local sensitivityX = 0.5
 local sensitivityY = 0.5
 local scale = {width / love.graphics.getWidth(), height / love.graphics.getHeight()}
 
 local objects = {}
-local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}}}
---,{"Point",{-3,2,0},{3,0,0},{0,0,255}}
+local lights = {{"Directional",{0,0,0},{-0.4,0.3,-0.6},{255,255,255}},{"Point",{-5,2,0},{0.5,0,0},{0,0,255}}}
+
 
 local tex_atlas = nil
 local bump_atlas = nil
@@ -105,12 +106,8 @@ function love.load()
 end
 
 function resetCamera()
-	cam_dir = {1,0,0}
-	local dx = cam_dir[1]*math.cos(math.rad(45)) - cam_dir[3]*math.sin(math.rad(45))
-	local dy = cam_dir[3]*math.cos(math.rad(45)) + cam_dir[1]*math.sin(math.rad(45))
-	cam_dir[1] = dx
-	cam_dir[3] = dy
-	cam_pos = {3,1,-1.5}
+	cam_dir = default_cam_dir
+	cam_pos = default_cam_pos
 end
 
 function rotateCamera()

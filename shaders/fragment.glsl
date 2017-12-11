@@ -1,4 +1,4 @@
-#define AA 1
+#define AA 4
 #define GI 1
 
 #define BUMP_FACTOR 0.015
@@ -430,13 +430,13 @@ float calcAO( in vec3 pos, in vec3 nor )
   return clamp( 1.0 - 3.0*occ, 0.0, 1.0 );
 }
 
-vec3 calcFog(vec3 pos, vec3 rd)
+vec3 calcFog(vec3 pos, vec3 rd, vec3 sky_color)
 {
 	float d = length(pos)*0.6*fog_density;
 	d = clamp(pow(d,2),0.0,1.0);
-	vec3 col = vec3(0.7, 0.9, 1.0)*d + 0.1*d;
+	vec3 col = sky_color * d;
 	col = clamp(col,0.0,1.0-fog_density/10);
-	//vec3 col = sky_color*d;
+	// vec3 col = sky_color*d;
 	return col;
 }
 
@@ -568,21 +568,7 @@ float shadow(in vec3 origin, in vec3 direction) {
   return clamp(hit, 0.0, 1.0);
 }
 
-// float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
-// {
-// 	float res = 1.0;
-//   float t = mint;
-//   for( int i=0; i<16; i++ )
-//   {
-// 		float h = map( ro + rd*t ).re.x*STEP_SIZE;
-//     res = min( res, 8.0*h/t );
-//     t += clamp( h, 0.02, 0.10 );
-//     if( h<0.001 || t>tmax ) break;
-//   }
-//   return clamp( res, 0.0, 1.0 );
-// }
-
-vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 baseColor, float roughness, float metallic) //n is normal, l is lighting direction
+vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseColor, float roughness, float metallic) //n is normal, l is lighting direction
 {
 	vec3 color = vec3(0.0);
 
@@ -597,6 +583,11 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 baseColor, float roughness, f
 
 	float intensity = 2.5; //Default: 2.0
 	float indirectIntensity = 0.64; //Default: 0.64
+
+	if (range > 0) {
+		intensity += clamp(range-distance(pos, lp),0.0,range);
+		indirectIntensity += clamp(range-distance(pos, lp),0.0,range)/3.90625;
+	}
 
 	float linearRoughness = roughness * roughness;
 	vec3 diffuseColor = (1.0 - metallic) * baseColor.rgb;
@@ -638,6 +629,16 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 baseColor, float roughness, f
 	return color;
 }
 
+vec3 Tonemap_ACES(const vec3 x) {
+  // Narkowicz 2015, "ACES Filmic Tone Mapping Curve"
+  const float a = 2.51;
+  const float b = 0.03;
+  const float c = 2.43;
+  const float d = 0.59;
+  const float e = 0.14;
+  return (x * (a * x + b)) / (x * (c * x + d) + e);
+}
+
 vec3 render( in vec3 ro, in vec3 rd )
 {
 	vec3 col = vec3(0.7, 0.9, 1.0) + rd.y*0.8;
@@ -672,28 +673,25 @@ vec3 render( in vec3 ro, in vec3 rd )
 		}
 
 		// lighting
-		vec3 L = vec3(0.0); //For GI
 		float occ = calcAO( pos, nor );
-		for (int i=0; i<1024; i++)
-		{
-			if (i>light_amount) break;
-			if (GI>0) {
-				//GI is 1, so prepare yourself for a lot of pain.
-				//Goodbye life
-				if (lights[i].Type == 1) { //Directional Light
+		if (GI > 0) {
+			//GI is 1, so prepare yourself for a lot of pain.
+			//Goodbye life
+			for (int i=0; i<1024; i++) {
+				if (i>light_amount) break;
+				if (lights[i].Type == 1) {
 					vec3 lig = normalize(lights[i].d);
-					c = BRDF(pos, nor, rd, lig, col, objects[id].roughness, objects[id].metallic) * occ;
-					// if (softshadow(pos, lig, 0.02, 2.5) > 0.1) {
-					// 	c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0);
-					// }
-				} else if (lights[i].Type == 2) { //Point Light
-					vec3 lig = lights[i].p - pos;
-					c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0) * occ;
-					// if (softshadow(pos, lig, 0.02, 2.5) > 0.1) {
-					// 	c = BRDF(pos, nor, rd, lig, col, 0.2, 0.0);
-					// }
+					c += BRDF(pos, nor, rd, lig, vec3(0.0), -1, col, objects[id].roughness, objects[id].metallic) * occ;
+				} else if (lights[i].Type == 2) {
+					vec3 lig = normalize(lights[i].p - pos);
+					//lights[i].d.x is the range
+					c += BRDF(pos, nor, rd, lig, lights[i].p, lights[i].d.x, col, objects[id].roughness, objects[id].metallic) * occ;
 				}
-			} else {
+			}
+		} else {
+			for (int i=0; i<1024; i++)
+			{
+				if (i>light_amount) break;
 				if (lights[i].Type == 1) { //Directional Light
 					vec3 lig = normalize(lights[i].d);
 					float dif = clamp( dot( nor, lig ), 0.0, 1.0 );
@@ -745,7 +743,12 @@ vec3 render( in vec3 ro, in vec3 rd )
 		}
 
 		vec3 fog_pos = pos - cam_pos;
-		c = c + calcFog(fog_pos, rd);
+		//c = c + calcFog(fog_pos, rd, vec3(0.7, 0.9, 1.0) + rd.y*0.8);
+		// Exponential distance fog
+		float d = length(fog_pos);
+		// Tone mapping
+	  //c = Tonemap_ACES(c);
+	  c = mix(c, vec3(0.7, 0.9, 1.0) + rd.y*0.8, 1.0 - exp2(-0.011 * d * d * fog_density));
 	} else {
 		return (vec3(0.7, 0.9, 1.0) + rd.y*0.8);
 	}
