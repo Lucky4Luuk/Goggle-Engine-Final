@@ -1,4 +1,4 @@
-#define AA 4
+#define AA 2
 #define GI 1
 
 #define BUMP_FACTOR 0.015
@@ -18,6 +18,7 @@ uniform int object_amount;
 uniform int light_amount;
 uniform sampler2D tex_atlas;
 uniform sampler2D bump_atlas;
+uniform sampler3D meshes[14];
 uniform struct Object
 {
 	int Type;
@@ -109,6 +110,12 @@ float sdBox(vec3 p, vec3 b)
 {
 	vec3 d = abs(p) - b;
 	return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+}
+
+float udMesh(vec3 p, int id)
+{
+	vec3 up = clamp(p*50.0, 0.0, 50.0);
+	return texture3D(meshes[id], up).r;
 }
 
 vec4 getTexel(sampler2D tex, vec2 uv, vec3 offset, vec2 ts)
@@ -242,6 +249,11 @@ RESULT map(vec3 pos)
 			}
 			res = vec4(q,objects[0].color);
 			closest = q;
+		} else if (objects[0].Type == 5) //A mesh
+		{
+			float q = udMesh(pos - objects[0].p, int(objects[0].tex_offset.x));
+			res = vec4(q, objects[0].color);
+			closest = q;
 		}
 		id = objects[0].i;
 
@@ -291,6 +303,15 @@ RESULT map(vec3 pos)
 					closest = q;
 					id = o;
 				}
+			} else if (objects[o].Type == 5) //A mesh
+			{
+				float q = udMesh(pos - objects[o].p, int(objects[o].tex_offset.x));
+				res = opU(res, vec4(q, objects[o].color));
+				if (q < closest)
+				{
+					closest = q;
+					id = o;
+				}
 			}
 		}
 	}
@@ -301,84 +322,40 @@ RESULT map(vec3 pos)
   return r;
 }
 
-RESULT castRay(vec3 pos, vec3 dir)
+vec3 getGlass(vec3 pos, vec3 dir)
 {
-    float tmin = 0.005;
-    float tmax = view_distance;
+	float tmin = 0.005;
+	float tmax = view_distance/5.0;
 
-    float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
-    float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
-                                                     else tmax = min(tmax, tp2); }
+	float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
+	float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
+																									 else tmax = min(tmax, tp2); }
 
-    float t = tmin;
-    vec3 m = vec3(-1.0);
-		int id = 0;
-    for (int i=0; i<64; i++)
-    {
-        float precis = 0.0005*t;
-        RESULT r = map(pos + dir*t);
-				vec4 res = r.re;
-				id = r.i;
-        if (res.x<precis || t>tmax) break;
-        t += res.x*STEP_SIZE;
-        m = res.yzw;
-    }
+	float t = tmin;
+	vec3 m = vec3(0.0);
+	int id = 0;
+	for (int i=0; i<16; i++)
+	{
+			float precis = 0.0005*t;
+			RESULT r = map(pos + dir*t);
+			vec4 res = r.re;
+			id = r.i;
+			if (t>tmax || res.x < precis) break;
+			t += res.x*STEP_SIZE;
+			m = res.yzw;
+			// vec3 newdir = refract(dir, calcNormal(pos + dir*t), ior);
+			// m += getGlass(pos + dir*t, newdir);
+	}
 
-    if (t>tmax) m=vec3(-15.0);
-    //return vec4(t, m);
-		RESULT re;
-		re.re = vec4(t, m);
-		re.i = id;
-		return re;
-}
-
-L_RESULT castLightRay(vec3 pos, vec3 dir, vec3 light_color, int cur_id)
-{
-    float tmin = 0.05;
-    float tmax = view_distance;
-
-    float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
-    float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
-                                                     else tmax = min(tmax, tp2); }
-
-    float t = tmin;
-    vec3 m = vec3(0.0);
-		int id = 0;
-    for (int i=0; i<64; i++)
-    {
-        float precis = 0.0005*t;
-        RESULT r = map(pos + dir*t);
-				vec4 res = r.re;
-				id = r.i;
-        if (res.x<precis)
-				{
-					if (id != cur_id) break;
-				}
-
-				if (res.x>tmax) break;
-        t += res.x;
-        m = res.yzw;
-    }
-
-    if (t>tmax)
-		{
-			m=vec3(0.0);
-			id = -1;
-		}
-
-		L_RESULT lre;
-		lre.t = t;
-		lre.m = vec4(m,0.5);
-		lre.id = id;
-
-    return lre;
+	if (t>tmax) m=vec3(-15.0);
+	return m;
 }
 
 float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
 {
 	float res = 1.0;
   float t = mint;
-  for( int i=0; i<16; i++ )
+  for( int i=0; i<64; i++ )
   {
 		float h = map( ro + rd*t ).re.x*STEP_SIZE;
     res = min( res, 8.0*h/t );
@@ -397,22 +374,37 @@ vec3 calcNormal( in vec3 pos )
 					  e.xxx*map( pos + e.xxx ).re.x );
 }
 
-vec3 calcGI( in vec3 pos, in vec3 nor )
+RESULT castRay(vec3 pos, vec3 dir)
 {
-	//float occ = 0.0;
-	vec3 col = vec3(0.0);
-  float sca = 1.0;
-  for( int i=0; i<50; i++ )
-  {
-      float hr = 0.01 + 0.12*float(i)/5.0;
-      vec3 aopos =  nor * hr + pos;
-			vec4 res = map( aopos ).re;
-      float dd = res.x*STEP_SIZE;
-      //occ += -(dd-hr)*sca;
-			col += -(dd-hr)*sca*res.yzw;
-      sca *= 0.95;
-  }
-  return clamp( 1.0 - 3.0*col, 0.0, 1.0 );
+    float tmin = 0.005;
+    float tmax = view_distance;
+
+    float tp1 = (0.0 - pos.y)/dir.y; if (tp1 > 0.0) tmax = min(tmax, tp1);
+    float tp2 = (120 - pos.y)/dir.y; if (tp2 > 0.0) { if (pos.y > 120) tmin = max(tmin, tp2);
+                                                     else tmax = min(tmax, tp2); }
+
+    float t = tmin;
+    vec3 m = vec3(0.0);
+		int id = 0;
+    for (int i=0; i<64; i++)
+    {
+        float precis = 0.0005*t;
+        RESULT r = map(pos + dir*t);
+				vec4 res = r.re;
+				id = r.i;
+				float a = objects[id].alpha;
+				float ior = 0.8;
+        if (t>tmax || res.x < precis) break;
+        t += res.x*STEP_SIZE;
+        m = res.yzw;
+    }
+
+    if (t>tmax) m=vec3(-15.0);
+    //return vec4(t, m);
+		RESULT re;
+		re.re = vec4(t, m);
+		re.i = id;
+		return re;
 }
 
 float calcAO( in vec3 pos, in vec3 nor )
@@ -454,32 +446,6 @@ vec3 calcFog(vec3 pos, vec3 rd, vec3 sky_color)
 //   occ = clamp( 1.0 - 11.0*occ/8.0, 0.0, 1.0 );
 //   return occ*occ;
 // }
-
-GI_TRACE GI_TracePath(vec3 pos, vec3 dir, int id)
-{
-	//https://en.wikipedia.org/wiki/Path_tracing
-	//http://www.scratchapixel.com/lessons/3d-basic-rendering/global-illumination-path-tracing
-	L_RESULT lre = castLightRay(pos, dir, vec3(1.0), id);
-	GI_TRACE gre;
-
-	gre.pos = pos + dir*lre.t;
-
-	vec3 nor = calcNormal(pos);
-	gre.dir = reflect(dir,nor);
-	gre.m = lre.m;
-
-	return gre;
-}
-
-vec3 getLighting(vec3 pos, vec3 col, vec3 nor, int type, vec3 lip, vec3 lig, float range) //If type == 1 then range isn't used.
-{
-	if (type == 1) {
-		float i = dot(lig, nor);
-		i = clamp(i, 0.0, 1.0);
-		return col * i;
-	}
-	return vec3(0.0);
-}
 
 //------------------------------------------------------------------------------
 // BRDF
@@ -581,7 +547,7 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 	float NoH = saturate(dot(n, h));
 	float LoH = saturate(dot(l, h));
 
-	float intensity = 2.5; //Default: 2.0
+	float intensity = 2.0; //Default: 2.0
 	float indirectIntensity = 0.64; //Default: 0.64
 
 	if (range > 0) {
@@ -593,7 +559,7 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 	vec3 diffuseColor = (1.0 - metallic) * baseColor.rgb;
 	vec3 f0 = 0.04 * (1.0 - metallic) + baseColor.rgb * metallic;
 
-	float attenuation = softshadow(pos, l, 0.02, 2.5);
+	float attenuation = softshadow(pos, l, 0.02, 25.0);
 
 	indirectIntensity *= attenuation;
 
@@ -614,7 +580,7 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 
 	RESULT indirectHit = castRay(pos, r);
 	vec3 tex_col = objects[indirectHit.i].avg_tex_col;
-	vec3 indirectSpecular = indirectHit.re.yzw * tex_col;
+	vec3 indirectSpecular = indirectHit.re.yzw;
 	if (indirectHit.re.yzw == vec3(-15.0)) {
 		indirectSpecular = vec3(0.7, 0.9, 1.0) + rd.y*0.8;
 	}
@@ -622,7 +588,7 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 	//Indirect Contribution
 	vec2 dfg = PrefilteredDFG_Karis(roughness, NoV);
 	vec3 specularColor = f0 * dfg.x + dfg.y;
-	vec3 ibl = diffuseColor * indirectDiffuse + indirectSpecular * specularColor;
+	vec3 ibl = diffuseColor * indirectDiffuse + indirectSpecular * specularColor * attenuation;
 
 	color += ibl * indirectIntensity;
 

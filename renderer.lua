@@ -6,6 +6,7 @@ local canvas = nil
 local cam_dir = {1,0,0}
 local cam_pos = {3,1,0}
 local shader = nil
+local fxaa = nil
 local sensitivityX = 0.5
 local sensitivityY = 0.5
 
@@ -17,6 +18,7 @@ end
 function setRenderSize(w, h)
   width = w
   height = h
+  fxaa:send("RES", {width, height})
   return true
 end
 
@@ -25,11 +27,15 @@ function updateAtlas(tex_atlas, bump_atlas)
   send("bump_atlas", bump_atlas)
 end
 
-function updateObjectsList(objects)
+function updateObjectsList(objects, meshes)
 	local obj_amount = 0
 
+  for i, o in ipairs(meshes) do
+    send("meshes["..tostring(i).."]", meshes[i])
+  end
+
 	for i, o in ipairs(objects) do
-		local alpha = o.alpha
+		local alpha = o.alpha/255
 		local t = 0
 		--local c = {o[4][1]/255,o[4][2]/255,o[4][3]/255}
     local c = {o.color[1]/255, o.color[2]/255, o.color[3]/255}
@@ -41,7 +47,10 @@ function updateObjectsList(objects)
 			t = 3
 		elseif o.t == "Box" then
 			t = 4
-		end
+		elseif o.t == "Mesh" then
+      t = 5
+      send("objects["..tostring(obj_amount).."].tex_offset", o.tex_offset)
+    end
     send("objects["..tostring(obj_amount).."].avg_tex_col", o.tex_col)
     send("objects["..tostring(obj_amount).."].roughness", o.roughness)
     send("objects["..tostring(obj_amount).."].metallic", o.metallic)
@@ -65,6 +74,7 @@ function updateObjectsList(objects)
 		send("objects["..tostring(obj_amount).."].b",o.size)
 		send("objects["..tostring(obj_amount).."].color",c)
     send("objects["..tostring(obj_amount).."].ref",o.ref)
+    send("objects["..tostring(obj_amount).."].alpha",alpha)
 		obj_amount = obj_amount + 1
 	end
 
@@ -107,6 +117,11 @@ function send(name, value)
   end
 end
 
+function renderer_load()
+  fxaa = love.graphics.newShader("shaders/fxaa.glsl")
+  fxaa:send("RES", {width, height})
+end
+
 function render()
   --Set variables
 	send("iTime",{iTime,iTimeDelta})
@@ -114,7 +129,11 @@ function render()
   send("cam_dir", cam_dir)
   send("screen_res", {width, height})
   love.graphics.setShader(shader)
+  love.graphics.setCanvas(canvas)
 	love.graphics.setColor(1,1,1,1)
 	love.graphics.rectangle("fill",0,0,love.graphics.getWidth(),love.graphics.getHeight())
+  love.graphics.setCanvas()
+  love.graphics.setShader(fxaa)
+  love.graphics.draw(canvas)
   love.graphics.setShader()
 end

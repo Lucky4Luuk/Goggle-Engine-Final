@@ -1,8 +1,13 @@
-// Mesh to SDF shader
+struct Face
+{
+  vec3 A;
+  vec3 B;
+  vec3 C;
+};
 
-uniform Image mesh;
-uniform vec2 meshres;
-uniform float texSize;
+uniform Face faces[3072];
+uniform int face_amount;
+uniform int VolumeZ;
 
 float dot2( in vec3 v ) { return dot(v,v); }
 float udTriangle( vec3 p, vec3 a, vec3 b, vec3 c )
@@ -27,30 +32,22 @@ float udTriangle( vec3 p, vec3 a, vec3 b, vec3 c )
 
 vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 screen_coords)
 {
-  vec2 uv = vec2(0.0);
-  uv.x = screen_coords.x / texSize;
-  uv.y = screen_coords.y / texSize;
-
-  vec3 pos = vec3(0.0);
-  pos.x = uv.x;
-  pos.y = mod(uv.y,1.0);
-  pos.z = uv.y / texSize;
-
-  float d = udTriangle(pos, Texel(mesh, vec2(0.0, 0.0)).xyz, Texel(mesh, vec2(1.0, 0.0)).xyz, Texel(mesh, vec2(2.0, 0.0)).xyz);
-
-  for (int y=0; y<meshres.y; y++)
+  //love_PixelColor = Texel(MainTex, vec3(VaryingTexCoord.xy, VolumeZ)) * VaryingColor;
+  vec3 p = vec3(texture_coords.xy, VolumeZ / 50.0);
+  float minvalue = 100000;
+  vec3 ray = vec3(1.0,0.0,0.0);
+  float d = udTriangle(p, faces[0].A / 50.0, faces[0].B / 50.0, faces[0].C / 50.0);
+  for (int i=1; i<3072; i++)
   {
-    for (int x=3; x<meshres.x; x+=3)
-    {
-      vec3 pos_one = Texel(mesh, vec2(float(x), float(y))).xyz;
-      vec3 pos_two = Texel(mesh, vec2(float(x+1), float(y))).xyz;
-      vec3 pos_three = Texel(mesh, vec2(float(x+2), float(y))).xyz;
-      d = min(d, udTriangle(pos, pos_one, pos_two, pos_three));
-    }
+    if (i > face_amount) break;
+    vec3 a = faces[i].A / 50.0;
+    vec3 b = faces[i].B / 50.0;
+    vec3 c = faces[i].C / 50.0;
+
+    d = min(d, udTriangle(p, a, b, c));
   }
 
-  vec4 col = vec4(d, 1.0, 1.0, 1.0);
+  d = clamp(d, 0.0, 1.0);
 
-  //Triangles are done by having 3 pixels per triangle. That's why the image is 126x126, not 128x128.
-  return col;
+  return vec4(d, d, d, 1.0);
 }
