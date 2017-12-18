@@ -1,4 +1,8 @@
-#define AA 2
+#pragma language glsl3
+
+#define SAMPLES 48
+
+#define AA 1
 #define GI 1
 
 #define BUMP_FACTOR 0.015
@@ -25,6 +29,7 @@ uniform struct Object
 	int i; //Object ID
 	vec3 p; //Vector 3: position
 	vec3 b; //Vector 3: size (if sphere, only x is used)
+	mat3 r; //Matrix 3: rotation
 	vec3 color;
 	bool isTextured;
 	bool hasBumpMap;
@@ -48,6 +53,12 @@ uniform struct Light
 uniform float fog_density;
 uniform float view_distance;
 uniform vec2 screen_res;
+
+
+// mat3 rotate3DX(float a) { return mat3(1.,0.,0.,0.,cos(a),-sin(a),0,sin(a),cos(a));}
+// mat3 rotate3DY(float a) { return mat3(cos(a),0.,sin(a),0.,1.,0.,-sin(a),0.,cos(a));}
+// mat3 rotate3DZ(float a) { return mat3(cos(a),-sin(a),0.,sin(a),cos(a),0.,0.,0.,1.);}
+
 
 //Define RESULT
 struct RESULT {
@@ -91,8 +102,9 @@ float opMorph(float d1, float d2, float a)
 
 // distance to sphere function (p is world position of the ray, s is sphere radius)
 // from http://iquilezles.org/www/articles/distfunctions/distfunctions.htm
-float sdSphere(vec3 p, float s)
+float sdSphere(vec3 pc, float s, mat3 r)
 {
+	vec3 p = r * pc;
 	return length(p) - s;
 }
 
@@ -101,13 +113,15 @@ float sdPlane(vec3 p)
     return p.y;
 }
 
-float udBox( vec3 p, vec3 b )
+float udBox( vec3 pc, vec3 b, mat3 r )
 {
-    return length(max(abs(p)-b,0.0));
+	vec3 p = r * pc;
+  return length(max(abs(p)-b,0.0));
 }
 
-float sdBox(vec3 p, vec3 b)
+float sdBox(vec3 pc, vec3 b, mat3 r)
 {
+	vec3 p = r * pc;
 	vec3 d = abs(p) - b;
 	return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
 }
@@ -115,7 +129,11 @@ float sdBox(vec3 p, vec3 b)
 float udMesh(vec3 p, int id)
 {
 	vec3 up = clamp(p*50.0, 0.0, 50.0);
-	return texture3D(meshes[id], up).r;
+	if (id == 1) {
+		return texture(meshes[1], up).r;
+	} else if (id == 2) {
+		return texture(meshes[2], up).r;
+	}
 }
 
 vec4 getTexel(sampler2D tex, vec2 uv, vec3 offset, vec2 ts)
@@ -228,12 +246,12 @@ RESULT map(vec3 pos)
 			closest = q;
 		} else if (objects[0].Type == 2)
 		{
-			float q = sdSphere(pos - objects[0].p,objects[0].b.x);
+			float q = sdSphere(pos - objects[0].p,objects[0].b.x, objects[0].r);
 			res = vec4(q,objects[0].color);
 			closest = q;
 		} else if (objects[0].Type == 3)
 		{
-			float q = udBox(pos - objects[0].p,objects[0].b);
+			float q = udBox(pos - objects[0].p,objects[0].b, objects[0].r);
 			res = vec4(q,objects[0].color);
 			closest = q;
 		} else if (objects[0].Type == 4)
@@ -245,7 +263,7 @@ RESULT map(vec3 pos)
 				q = sdBoxBump(pos, objects[0].p, objects[0].b, bump_atlas, objects[0].texrepeat, objects[0].bump_offset, objects[0].texsize);
 				// q = sdBox(pos - objects[0].p,objects[0].b);
 			} else {
-				q = sdBox(pos - objects[0].p,objects[0].b);
+				q = sdBox(pos - objects[0].p,objects[0].b, objects[0].r);
 			}
 			res = vec4(q,objects[0].color);
 			closest = q;
@@ -271,7 +289,7 @@ RESULT map(vec3 pos)
 				}
 			} else if (objects[o].Type == 2)
 			{
-				float q = sdSphere(pos - objects[o].p,objects[o].b.x);
+				float q = sdSphere(pos - objects[o].p,objects[o].b.x, objects[o].r);
 				res = opU(res,vec4(q,objects[o].color));
 				if (q < closest)
 				{
@@ -280,7 +298,7 @@ RESULT map(vec3 pos)
 				}
 			} else if (objects[o].Type == 3)
 			{
-				float q = udBox(pos - objects[o].p,objects[o].b);
+				float q = udBox(pos - objects[o].p,objects[o].b, objects[o].r);
 				res = opU(res,vec4(q,objects[o].color));
 				if (q < closest)
 				{
@@ -295,7 +313,7 @@ RESULT map(vec3 pos)
 					q = sdBoxBump(pos, objects[o].p, objects[o].b, bump_atlas, objects[o].texrepeat, objects[o].bump_offset, objects[o].texsize);
 					// q = sdBox(pos - objects[o].p,objects[o].b);
 				} else {
-					q = sdBox(pos - objects[o].p,objects[o].b);
+					q = sdBox(pos - objects[o].p,objects[o].b, objects[o].r);
 				}
 				res = opU(res,vec4(q,objects[o].color));
 				if (q < closest)
@@ -386,7 +404,7 @@ RESULT castRay(vec3 pos, vec3 dir)
     float t = tmin;
     vec3 m = vec3(0.0);
 		int id = 0;
-    for (int i=0; i<64; i++)
+    for (int i=0; i<SAMPLES; i++)
     {
         float precis = 0.0005*t;
         RESULT r = map(pos + dir*t);
@@ -551,6 +569,8 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 	float indirectIntensity = 0.64; //Default: 0.64
 
 	if (range > 0) {
+		intensity = 0.0;
+		indirectIntensity = 0.0;
 		intensity += clamp(range-distance(pos, lp),0.0,range);
 		indirectIntensity += clamp(range-distance(pos, lp),0.0,range)/3.90625;
 	}
@@ -564,7 +584,7 @@ vec3 BRDF (vec3 pos, vec3 n, vec3 rd, vec3 l, vec3 lp, float range, vec3 baseCol
 	indirectIntensity *= attenuation;
 
 	//Specular BRDF
-	float D = D_GGX(linearRoughness, NoH, h);
+	float D = D_GGX(linearRoughness, NoH, h) * attenuation;
 	float V = V_SmithGGXCorrelated(linearRoughness, NoV, NoL);
 	vec3 F = F_Schlick(f0, LoH);
 	vec3 Fr = (D * V) * F;

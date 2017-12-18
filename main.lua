@@ -6,7 +6,7 @@ require("filesystem")
 require("physics")
 require("utils")
 
-local debug = {FPS=false, CAMERA=false, ERROR=false}
+local debug = {FPS=true, CAMERA=false, ERROR=false}
 
 local width = 768
 local height = 432
@@ -40,7 +40,7 @@ local errors = {}
 
 local first_frame = true
 local TIMESTEP = 0
-local TIMESTEPLENGTH = 0.05
+local TIMESTEPLENGTH = 1/60
 
 function setSize(w, h)
 	width = w
@@ -101,7 +101,7 @@ function love.load()
 	--Load testing data
 	loadModel("floor.dmod")
 	loadModel("box.dmod")
-	loadModel(newMeshObject({5,0.5,0}, {255,255,255}, 0.2, 0, 1, MeshToSDF("Models/tigre_sumatra_sketchfab.obj", 2)))
+	--loadModel(newMeshObject({5,0.5,0}, {255,255,255}, 0.2, 0, 1, MeshToSDF("Models/tigre_sumatra_sketchfab.obj", 2)))
 
 	--Generate Texture Atlas
 	tex_atlas_data, bump_atlas_data = generateTextureAtlas(objects)
@@ -174,6 +174,14 @@ function FixedUpdate()
 	local bsres = getBSResponses(objects)
   local cres = getCollisionResponses(bsres, objects)
   applyPhysics(cres, objects)
+
+	for i=1, #objects do
+		if objects[i].script then
+			if objects[i].script.FixedUpdate then
+				objects[i].script.FixedUpdate(objects[i], TIMESTEPLENGTH)
+			end
+		end
+	end
 end
 
 function love.update(dt)

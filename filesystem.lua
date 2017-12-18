@@ -17,6 +17,10 @@ function FS_loadModel(filename)
         object[1][i].bumptex = love.graphics.newImage("assets/"..bumptexloc)
         object[1][i].bumptexname = bumptexloc
       end
+      if object[1][i].script then
+        local scriptloc = "assets/"..object[1][i].script
+        object[1][i].script = prerequire(scriptloc:gsub("/","."))
+      end
   		-- table.insert(objects,object)
       table.insert(t, object[1][i])
     end

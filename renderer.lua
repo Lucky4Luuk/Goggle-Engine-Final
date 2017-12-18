@@ -10,6 +10,8 @@ local fxaa = nil
 local sensitivityX = 0.5
 local sensitivityY = 0.5
 
+local FLAGS = {AA=false}
+
 function setCamera(pos, dir)
   cam_pos = pos
   cam_dir = dir
@@ -50,6 +52,10 @@ function updateObjectsList(objects, meshes)
 		elseif o.t == "Mesh" then
       t = 5
       send("objects["..tostring(obj_amount).."].tex_offset", o.tex_offset)
+    end
+    if o.t ~= "Plane" then
+      local mr = getRotationMatrix(o.rot.x, o.rot.y, o.rot.z)
+      send("objects["..tostring(obj_amount).."].r", mr)
     end
     send("objects["..tostring(obj_amount).."].avg_tex_col", o.tex_col)
     send("objects["..tostring(obj_amount).."].roughness", o.roughness)
@@ -129,11 +135,15 @@ function render()
   send("cam_dir", cam_dir)
   send("screen_res", {width, height})
   love.graphics.setShader(shader)
-  love.graphics.setCanvas(canvas)
+  if FLAGS.AA then
+    love.graphics.setCanvas(canvas)
+  end
 	love.graphics.setColor(1,1,1,1)
 	love.graphics.rectangle("fill",0,0,love.graphics.getWidth(),love.graphics.getHeight())
-  love.graphics.setCanvas()
-  love.graphics.setShader(fxaa)
-  love.graphics.draw(canvas)
+  if FLAGS.AA then
+    love.graphics.setCanvas()
+    love.graphics.setShader(fxaa)
+    love.graphics.draw(canvas)
+  end
   love.graphics.setShader()
 end
