@@ -184,13 +184,21 @@ function FixedUpdate()
 	end
 end
 
+function love.mousepressed(x, y, button, is_touch)
+	if button == 2 then
+		love.mouse.setPosition(love.graphics.getWidth()/2, love.graphics.getHeight()/2)
+	end
+end
+
 function love.update(dt)
 	iTime = iTime + dt
 	iTimeDelta = dt
 	TIMESTEP = TIMESTEP + dt
 
-	moveCamera(dt)
-	rotateCamera()
+	if love.mouse.isDown(2) then
+		moveCamera(dt)
+		rotateCamera()
+	end
 	setCamera(cam_pos, cam_dir)
 	updateObjectsList(objects, meshes)
 	updateLightsList(lights)
