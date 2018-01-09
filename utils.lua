@@ -1,6 +1,25 @@
 --https://github.com/davidm/lua-matrix
 local matrix = require "matrix"
 
+function genMainShader()
+  local lines = {}
+  for line in io.lines("shaders/fragment_pre.glsl") do
+    table.insert(lines, line)
+  end
+  for line in io.lines("shaders/mercury_hg_sdf_functions.glsl") do
+    table.insert(lines, line)
+  end
+  for line in io.lines("shaders/fragment.glsl") do
+    table.insert(lines, line)
+  end
+  local file = io.open("shaders/temp.glsl","w+")
+  io.output(file)
+  for i=1, #lines do
+    io.write(lines[i].."\n")
+  end
+  file:close()
+end
+
 local function getRotMatX(a)
   local c = math.cos(a)
   local s = math.sin(a)

@@ -95,8 +95,9 @@ function love.load()
 	setSize(width, height)
 	setCanvas(love.graphics.newCanvas(width,height))
 
-	--Load shader
-	setShader(love.graphics.newShader("shaders/fragment.glsl"))
+	--Gen & Load shader
+	genMainShader()
+	setShader(love.graphics.newShader("shaders/temp.glsl"))
 
 	--Load testing data
 	loadModel("floor.dmod")

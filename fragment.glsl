@@ -54,6 +54,16 @@ struct GI_TRACE {
 	int id;
 };
 
+float opBlendChamfer(float d1, float d2, float r)
+{
+  float m = min(d1, d2);
+  if (d1 < r && d2 < r) {
+    return min(m, d1 + d2 - r);
+  }
+  return m;
+}
+
+
 vec4 opU( vec4 d1, vec4 d2 )
 {
 	return (d1.x<d2.x) ? d1 : d2;
